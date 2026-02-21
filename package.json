@@ -1,0 +1,12 @@
+{
+  "name": "auto-ofertas",
+  "version": "0.1.0",
+  "private": true,
+  "packageManager": "pnpm@10.12.1",
+  "scripts": {
+    "dev": "pnpm --filter web dev",
+    "build": "pnpm --filter web build",
+    "lint": "pnpm --filter web lint",
+    "seed": "pnpm --filter web seed"
+  }
+}
