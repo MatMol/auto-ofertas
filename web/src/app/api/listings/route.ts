@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getListings } from "@/lib/db/client";
 import type { SearchFilters } from "@/lib/types";
 
-export const runtime = "edge";
+export const dynamic = "force-dynamic";
 
 export async function GET(request: NextRequest) {
   const params = request.nextUrl.searchParams;
@@ -32,7 +32,14 @@ export async function GET(request: NextRequest) {
     pageSize: 12,
   };
 
-  const data = await getListings(filters);
-
-  return NextResponse.json(data);
+  try {
+    const data = await getListings(filters);
+    return NextResponse.json(data);
+  } catch (err) {
+    console.error("GET /api/listings error:", err);
+    return NextResponse.json(
+      { error: String(err), listings: [], total: 0 },
+      { status: 500 }
+    );
+  }
 }

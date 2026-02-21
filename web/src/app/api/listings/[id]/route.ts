@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getListingById } from "@/lib/db/client";
 
-export const runtime = "edge";
+export const dynamic = "force-dynamic";
 
 export async function GET(
   _request: NextRequest,

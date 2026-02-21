@@ -1,9 +1,14 @@
 import { NextResponse } from "next/server";
 import { getBrands } from "@/lib/db/client";
 
-export const runtime = "edge";
+export const dynamic = "force-dynamic";
 
 export async function GET() {
-  const brands = await getBrands();
-  return NextResponse.json(brands);
+  try {
+    const brands = await getBrands();
+    return NextResponse.json(brands);
+  } catch (err) {
+    console.error("GET /api/brands error:", err);
+    return NextResponse.json({ error: String(err) }, { status: 500 });
+  }
 }
