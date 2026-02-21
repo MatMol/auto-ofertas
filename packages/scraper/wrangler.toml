@@ -12,7 +12,7 @@ crons = [
 [[d1_databases]]
 binding = "DB"
 database_name = "auto-ofertas-db"
-database_id = "YOUR_D1_DATABASE_ID"
+database_id = "d73539a8-fc35-4d9c-b947-41c115fbbf60"
 
 [vars]
 USD_RATE = "1180"
