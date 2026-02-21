@@ -1,0 +1,2 @@
+ALTER TABLE listings ADD COLUMN currency TEXT NOT NULL DEFAULT 'ARS';
+ALTER TABLE listings ADD COLUMN price_ars REAL;

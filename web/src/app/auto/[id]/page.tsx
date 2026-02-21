@@ -1,8 +1,6 @@
-"use client";
-
-import { use } from "react";
 import Link from "next/link";
 import Image from "next/image";
+import { notFound } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -10,7 +8,7 @@ import { Separator } from "@/components/ui/separator";
 import { DealScoreGauge } from "@/components/deal-score";
 import { VerificationBadge } from "@/components/verification-badge";
 import { CostBreakdown } from "@/components/cost-breakdown";
-import { getMockListing, MOCK_LISTINGS } from "@/lib/db/mock-data";
+import { getListingById, getSimilarListings, getAvgPriceArs } from "@/lib/db/client";
 import { formatPrice, formatPriceUsd, formatKm } from "@/lib/format";
 import {
   SOURCE_LABELS,
@@ -33,6 +31,8 @@ import {
 } from "lucide-react";
 import { ListingCard } from "@/components/listing-card";
 
+export const dynamic = "force-dynamic";
+
 function InfoRow({
   icon: Icon,
   label,
@@ -51,43 +51,26 @@ function InfoRow({
   );
 }
 
-export default function AutoDetailPage({
+export default async function AutoDetailPage({
   params,
 }: {
   params: Promise<{ id: string }>;
 }) {
-  const { id } = use(params);
-  const listing = getMockListing(id);
+  const { id } = await params;
+  const listing = await getListingById(id);
 
   if (!listing) {
-    return (
-      <div className="mx-auto max-w-7xl px-4 py-16 text-center">
-        <h1 className="text-2xl font-bold">Auto no encontrado</h1>
-        <p className="text-muted-foreground mt-2">
-          El auto que buscás no existe o fue removido.
-        </p>
-        <Button asChild className="mt-4">
-          <Link href="/buscar">Volver a buscar</Link>
-        </Button>
-      </div>
-    );
+    notFound();
   }
 
-  const similar = MOCK_LISTINGS.filter(
-    (l) =>
-      l.id !== listing.id &&
-      (l.brand === listing.brand || l.bodyType === listing.bodyType)
-  ).slice(0, 3);
+  const [similar, avgPriceArs] = await Promise.all([
+    getSimilarListings(listing.brand, listing.model, listing.id, 3),
+    getAvgPriceArs(listing.brand, listing.model),
+  ]);
 
-  const sameModelListings = MOCK_LISTINGS.filter(
-    (l) => l.brand === listing.brand && l.model === listing.model
-  );
-  const avgPriceArs =
-    sameModelListings.reduce((sum, l) => sum + l.priceArs, 0) /
-      Math.max(sameModelListings.length, 1) || listing.priceArs;
-
+  const effectiveAvg = avgPriceArs || listing.priceArs;
   const priceDiffPct = Math.round(
-    ((listing.priceArs - avgPriceArs) / avgPriceArs) * 100
+    ((listing.priceArs - effectiveAvg) / effectiveAvg) * 100
   );
 
   return (
@@ -268,7 +251,7 @@ export default function AutoDetailPage({
                   </span>
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  Promedio: {formatPrice(avgPriceArs, "ARS")}
+                  Promedio: {formatPrice(effectiveAvg, "ARS")}
                 </p>
               </div>
 

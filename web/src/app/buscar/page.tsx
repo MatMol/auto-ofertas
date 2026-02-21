@@ -1,15 +1,14 @@
 "use client";
 
-import { useState, useMemo, useCallback, Suspense } from "react";
+import { useState, useMemo, useCallback, useEffect, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { ListingCard } from "@/components/listing-card";
 import { FilterSidebar } from "@/components/filters/filter-sidebar";
 import { FilterChips } from "@/components/filters/filter-chips";
-import { getMockListings, getMockBrands } from "@/lib/db/mock-data";
-import { SlidersHorizontal, ChevronLeft, ChevronRight } from "lucide-react";
-import type { SearchFilters } from "@/lib/types";
+import { SlidersHorizontal, ChevronLeft, ChevronRight, Loader2 } from "lucide-react";
+import type { SearchFilters, Listing } from "@/lib/types";
 
 function parseFiltersFromParams(params: URLSearchParams): SearchFilters {
   return {
@@ -68,20 +67,42 @@ function SearchContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [listings, setListings] = useState<Listing[]>([]);
+  const [total, setTotal] = useState(0);
+  const [brands, setBrands] = useState<{ brand: string; count: number }[]>([]);
+  const [loading, setLoading] = useState(true);
 
   const filters = useMemo(
     () => parseFiltersFromParams(searchParams),
     [searchParams]
   );
 
-  const brands = useMemo(() => getMockBrands(), []);
-
-  const { listings, total } = useMemo(
-    () => getMockListings(filters),
-    [filters]
-  );
-
   const totalPages = Math.ceil(total / (filters.pageSize ?? 12));
+
+  useEffect(() => {
+    const controller = new AbortController();
+    setLoading(true);
+
+    fetch(`/api/listings?${searchParams.toString()}`, { signal: controller.signal })
+      .then((res) => res.json() as Promise<{ listings: Listing[]; total: number }>)
+      .then((data) => {
+        setListings(data.listings);
+        setTotal(data.total);
+        setLoading(false);
+      })
+      .catch((err: Error) => {
+        if (err.name !== "AbortError") setLoading(false);
+      });
+
+    return () => controller.abort();
+  }, [searchParams]);
+
+  useEffect(() => {
+    fetch("/api/brands")
+      .then((res) => res.json() as Promise<{ brand: string; count: number }[]>)
+      .then((data) => setBrands(data))
+      .catch(() => {});
+  }, []);
 
   const updateFilters = useCallback(
     (newFilters: SearchFilters) => {
@@ -143,7 +164,11 @@ function SearchContent() {
           <FilterChips filters={filters} onChange={updateFilters} />
 
           {/* Results grid */}
-          {listings.length > 0 ? (
+          {loading ? (
+            <div className="flex items-center justify-center py-16">
+              <Loader2 className="animate-spin text-muted-foreground" size={24} />
+            </div>
+          ) : listings.length > 0 ? (
             <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
               {listings.map((listing) => (
                 <ListingCard key={listing.id} listing={listing} />

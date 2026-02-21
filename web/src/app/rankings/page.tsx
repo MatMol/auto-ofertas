@@ -1,14 +1,13 @@
-"use client";
-
-import { useMemo } from "react";
 import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { ListingCard } from "@/components/listing-card";
 import { DealScoreBadge } from "@/components/deal-score";
-import { MOCK_LISTINGS } from "@/lib/db/mock-data";
+import { getRankingData } from "@/lib/db/client";
 import { formatPrice, formatKm } from "@/lib/format";
-import { Trophy, TrendingDown, Gauge, Car, Truck, Zap, Sparkles } from "lucide-react";
+import { Trophy, TrendingDown, Gauge, Car, Truck, Sparkles } from "lucide-react";
+import type { Listing } from "@/lib/types";
+
+export const dynamic = "force-dynamic";
 
 function RankingTable({
   icon: Icon,
@@ -21,9 +20,9 @@ function RankingTable({
   icon: React.ElementType;
   title: string;
   description: string;
-  listings: typeof MOCK_LISTINGS;
+  listings: Listing[];
   valueLabel: string;
-  valueFn: (l: (typeof MOCK_LISTINGS)[0]) => string;
+  valueFn: (l: Listing) => string;
 }) {
   return (
     <Card>
@@ -61,70 +60,18 @@ function RankingTable({
             </div>
           </Link>
         ))}
+        {listings.length === 0 && (
+          <p className="text-sm text-muted-foreground text-center py-4">
+            Sin datos todavía
+          </p>
+        )}
       </CardContent>
     </Card>
   );
 }
 
-export default function RankingsPage() {
-  const topDeals = useMemo(
-    () => [...MOCK_LISTINGS].sort((a, b) => b.dealScore - a.dealScore).slice(0, 5),
-    []
-  );
-
-  const bestPricePerKm = useMemo(
-    () =>
-      [...MOCK_LISTINGS]
-        .filter((l) => l.km > 0)
-        .sort((a, b) => a.price / a.km - b.price / b.km)
-        .slice(0, 5),
-    []
-  );
-
-  const lowestKmUsed = useMemo(
-    () =>
-      [...MOCK_LISTINGS]
-        .filter((l) => !l.isNew && l.km > 0)
-        .sort((a, b) => a.km - b.km)
-        .slice(0, 5),
-    []
-  );
-
-  const best0km = useMemo(
-    () =>
-      [...MOCK_LISTINGS]
-        .filter((l) => l.isNew)
-        .sort((a, b) => b.dealScore - a.dealScore)
-        .slice(0, 5),
-    []
-  );
-
-  const sedanDeals = useMemo(
-    () =>
-      [...MOCK_LISTINGS]
-        .filter((l) => l.bodyType === "sedan")
-        .sort((a, b) => b.dealScore - a.dealScore)
-        .slice(0, 5),
-    []
-  );
-
-  const suvDeals = useMemo(
-    () =>
-      [...MOCK_LISTINGS]
-        .filter((l) => l.bodyType === "suv")
-        .sort((a, b) => b.dealScore - a.dealScore)
-        .slice(0, 5),
-    []
-  );
-
-  const pickupDeals = useMemo(
-    () =>
-      [...MOCK_LISTINGS]
-        .filter((l) => l.bodyType === "pickup")
-        .sort((a, b) => b.dealScore - a.dealScore)
-        .slice(0, 5),
-    []
-  );
+export default async function RankingsPage() {
+  const data = await getRankingData();
 
   return (
     <div className="mx-auto max-w-7xl px-4 py-8 space-y-8">
@@ -140,17 +87,19 @@ export default function RankingsPage() {
       </div>
 
       {/* Top overall */}
-      <section>
-        <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
-          <Trophy size={18} className="text-amber-500" aria-hidden="true" />
-          Top 5 mejores ofertas generales
-        </h2>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {topDeals.slice(0, 3).map((listing) => (
-            <ListingCard key={listing.id} listing={listing} />
-          ))}
-        </div>
-      </section>
+      {data.topDeals.length > 0 && (
+        <section>
+          <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
+            <Trophy size={18} className="text-amber-500" aria-hidden="true" />
+            Top 5 mejores ofertas generales
+          </h2>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {data.topDeals.slice(0, 3).map((listing) => (
+              <ListingCard key={listing.id} listing={listing} />
+            ))}
+          </div>
+        </section>
+      )}
 
       {/* Category rankings */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -158,16 +107,16 @@ export default function RankingsPage() {
           icon={TrendingDown}
           title="Mejor precio/km"
           description="Autos con la mejor relación precio por kilómetro recorrido"
-          listings={bestPricePerKm}
+          listings={data.bestPricePerKm}
           valueLabel="$/km"
-          valueFn={(l) => `$${Math.round(l.price / l.km).toLocaleString()}`}
+          valueFn={(l) => `$${Math.round(l.priceArs / Math.max(l.km, 1)).toLocaleString()}`}
         />
 
         <RankingTable
           icon={Gauge}
           title="Usados con menos km"
           description="Usados semi-nuevos con los menores kilómetros"
-          listings={lowestKmUsed}
+          listings={data.lowestKmUsed}
           valueLabel="Km"
           valueFn={(l) => formatKm(l.km)}
         />
@@ -176,7 +125,7 @@ export default function RankingsPage() {
           icon={Sparkles}
           title="Mejores ofertas 0km"
           description="Los 0km con mejor relación precio/valor"
-          listings={best0km}
+          listings={data.best0km}
           valueLabel="Score"
           valueFn={(l) => String(l.dealScore)}
         />
@@ -185,7 +134,7 @@ export default function RankingsPage() {
           icon={Car}
           title="Mejores sedanes"
           description="Las mejores ofertas en sedanes"
-          listings={sedanDeals}
+          listings={data.sedanDeals}
           valueLabel="Score"
           valueFn={(l) => String(l.dealScore)}
         />
@@ -194,7 +143,7 @@ export default function RankingsPage() {
           icon={Truck}
           title="Mejores SUVs"
           description="Las mejores ofertas en SUVs"
-          listings={suvDeals}
+          listings={data.suvDeals}
           valueLabel="Score"
           valueFn={(l) => String(l.dealScore)}
         />
@@ -203,7 +152,7 @@ export default function RankingsPage() {
           icon={Truck}
           title="Mejores pickups"
           description="Las mejores ofertas en pickups"
-          listings={pickupDeals}
+          listings={data.pickupDeals}
           valueLabel="Score"
           valueFn={(l) => String(l.dealScore)}
         />

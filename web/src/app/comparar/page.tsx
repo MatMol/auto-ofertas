@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import {
@@ -16,15 +16,13 @@ import { VerificationBadge } from "@/components/verification-badge";
 import { calculatePatente } from "@/lib/costs/patente";
 import { calculateFuel } from "@/lib/costs/fuel";
 import { calculateInsurance } from "@/lib/costs/insurance";
-import { MOCK_LISTINGS } from "@/lib/db/mock-data";
 import { formatPrice, formatKm } from "@/lib/format";
 import {
   FUEL_TYPE_LABELS,
   BODY_TYPE_LABELS,
 } from "@/lib/types";
-import type { FuelType, BodyType } from "@/lib/types";
+import type { FuelType, BodyType, Listing } from "@/lib/types";
 import { GitCompareArrows, Plus, X, ExternalLink } from "lucide-react";
-import type { Listing } from "@/lib/types";
 
 function CompareColumn({
   listing,
@@ -167,16 +165,24 @@ function Row({
 
 export default function CompararPage() {
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [allListings, setAllListings] = useState<Listing[]>([]);
+
+  useEffect(() => {
+    fetch("/api/listings?pageSize=200&sortBy=deal_score")
+      .then((res) => res.json() as Promise<{ listings: Listing[] }>)
+      .then((data) => setAllListings(data.listings))
+      .catch(() => {});
+  }, []);
 
   const selectedListings = useMemo(
     () =>
       selectedIds
-        .map((id) => MOCK_LISTINGS.find((l) => l.id === id))
+        .map((id) => allListings.find((l) => l.id === id))
         .filter(Boolean) as Listing[],
-    [selectedIds]
+    [selectedIds, allListings]
   );
 
-  const availableListings = MOCK_LISTINGS.filter(
+  const availableListings = allListings.filter(
     (l) => !selectedIds.includes(l.id)
   );
 

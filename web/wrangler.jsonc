@@ -1,11 +1,17 @@
 {
-  "name": "auto-ofertas-web",
-  "compatibility_date": "2025-01-01",
-  "d1_databases": [
-    {
-      "binding": "DB",
-      "database_name": "auto-ofertas-db",
-      "database_id": "YOUR_D1_DATABASE_ID"
-    }
-  ]
+	"name": "auto-ofertas-web",
+	"compatibility_date": "2025-01-01",
+	"d1_databases": [
+		{
+			"binding": "DB",
+			"database_name": "auto-ofertas-db",
+      "database_id": "d73539a8-fc35-4d9c-b947-41c115fbbf60"
+		},
+		{
+			"binding": "auto_ofertas_db",
+			"database_name": "auto-ofertas-db",
+			"database_id": "d73539a8-fc35-4d9c-b947-41c115fbbf60",
+			"remote": true
+		}
+	]
 }

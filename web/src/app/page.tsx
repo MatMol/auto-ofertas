@@ -1,15 +1,10 @@
-"use client";
-
-import { useState } from "react";
-import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
 import { ListingCard } from "@/components/listing-card";
-import { MOCK_LISTINGS } from "@/lib/db/mock-data";
+import { HeroSearch } from "@/components/hero-search";
+import { getTopListings } from "@/lib/db/client";
 import {
-  Search,
   Car,
   Truck,
   Fuel,
@@ -61,66 +56,18 @@ const QUICK_CATEGORIES = [
   },
 ];
 
-export default function HomePage() {
-  const router = useRouter();
-  const [query, setQuery] = useState("");
+export const dynamic = "force-dynamic";
 
-  const topUsedDeals = [...MOCK_LISTINGS]
-    .filter((l) => !l.isNew)
-    .sort((a, b) => b.dealScore - a.dealScore)
-    .slice(0, 6);
-
-  const topNewDeals = [...MOCK_LISTINGS]
-    .filter((l) => l.isNew)
-    .sort((a, b) => b.dealScore - a.dealScore)
-    .slice(0, 6);
-
-  const handleSearch = (e: React.FormEvent) => {
-    e.preventDefault();
-    const params = new URLSearchParams();
-    if (query.trim()) params.set("q", query.trim());
-    router.push(`/buscar?${params.toString()}`);
-  };
+export default async function HomePage() {
+  const [topUsedDeals, topNewDeals, recentListings] = await Promise.all([
+    getTopListings({ isNew: false, limit: 6 }),
+    getTopListings({ isNew: true, limit: 6 }),
+    getTopListings({ limit: 6, sortBy: "newest" }),
+  ]);
 
   return (
     <div className="space-y-12 pb-16">
-      {/* Hero */}
-      <section className="bg-gradient-to-b from-primary/5 to-background py-16 md:py-24">
-        <div className="mx-auto max-w-7xl px-4 text-center space-y-6">
-          <h1 className="text-3xl md:text-5xl font-bold tracking-tight">
-            Encontrá el mejor auto
-            <br />
-            <span className="text-emerald-600">al mejor precio</span>
-          </h1>
-          <p className="text-muted-foreground text-lg max-w-2xl mx-auto">
-            Comparamos miles de publicaciones de MercadoLibre, DeMotores,
-            Autocosmos y Kavak. Te mostramos las mejores ofertas con un
-            análisis de precio, estado y costos de tenencia.
-          </p>
-          <form
-            onSubmit={handleSearch}
-            className="flex gap-2 max-w-xl mx-auto"
-          >
-            <div className="relative flex-1">
-              <Search
-                size={18}
-                className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
-                aria-hidden="true"
-              />
-              <Input
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                placeholder="Toyota Corolla 2020, Ford Ranger diesel..."
-                aria-label="Buscar autos por marca, modelo o año"
-                className="pl-10 h-12 text-base"
-              />
-            </div>
-            <Button type="submit" size="lg" className="h-12 px-6">
-              Buscar
-            </Button>
-          </form>
-        </div>
-      </section>
+      <HeroSearch />
 
       {/* Quick Categories */}
       <section className="mx-auto max-w-7xl px-4">
@@ -152,25 +99,27 @@ export default function HomePage() {
       </section>
 
       {/* Top Used Deals */}
-      <section className="mx-auto max-w-7xl px-4">
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center gap-2">
-            <Star size={20} className="text-amber-500" aria-hidden="true" />
-            <h2 className="text-xl font-semibold">Mejores ofertas — Usados</h2>
+      {topUsedDeals.length > 0 && (
+        <section className="mx-auto max-w-7xl px-4">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-2">
+              <Star size={20} className="text-amber-500" aria-hidden="true" />
+              <h2 className="text-xl font-semibold">Mejores ofertas — Usados</h2>
+            </div>
+            <Button variant="ghost" size="sm" asChild>
+              <a href="/buscar?sortBy=deal_score" className="gap-1">
+                Ver todas
+                <ArrowRight size={14} aria-hidden="true" />
+              </a>
+            </Button>
           </div>
-          <Button variant="ghost" size="sm" asChild>
-            <a href="/buscar?sortBy=deal_score" className="gap-1">
-              Ver todas
-              <ArrowRight size={14} aria-hidden="true" />
-            </a>
-          </Button>
-        </div>
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-3">
-          {topUsedDeals.map((listing) => (
-            <ListingCard key={listing.id} listing={listing} />
-          ))}
-        </div>
-      </section>
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-3">
+            {topUsedDeals.map((listing) => (
+              <ListingCard key={listing.id} listing={listing} />
+            ))}
+          </div>
+        </section>
+      )}
 
       {/* Top 0km Deals */}
       {topNewDeals.length > 0 && (
@@ -196,25 +145,27 @@ export default function HomePage() {
       )}
 
       {/* Recently Added */}
-      <section className="mx-auto max-w-7xl px-4">
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center gap-2">
-            <TrendingDown size={20} className="text-emerald-500" aria-hidden="true" />
-            <h2 className="text-xl font-semibold">Recién publicados</h2>
+      {recentListings.length > 0 && (
+        <section className="mx-auto max-w-7xl px-4">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-2">
+              <TrendingDown size={20} className="text-emerald-500" aria-hidden="true" />
+              <h2 className="text-xl font-semibold">Recién publicados</h2>
+            </div>
+            <Button variant="ghost" size="sm" asChild>
+              <a href="/buscar?sortBy=newest" className="gap-1">
+                Ver todos
+                <ArrowRight size={14} aria-hidden="true" />
+              </a>
+            </Button>
           </div>
-          <Button variant="ghost" size="sm" asChild>
-            <a href="/buscar?sortBy=newest" className="gap-1">
-              Ver todos
-              <ArrowRight size={14} aria-hidden="true" />
-            </a>
-          </Button>
-        </div>
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-3">
-          {MOCK_LISTINGS.slice(0, 6).map((listing) => (
-            <ListingCard key={listing.id} listing={listing} />
-          ))}
-        </div>
-      </section>
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-3">
+            {recentListings.map((listing) => (
+              <ListingCard key={listing.id} listing={listing} />
+            ))}
+          </div>
+        </section>
+      )}
     </div>
   );
 }
