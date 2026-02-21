@@ -384,49 +384,63 @@ async function queryD1(sql: string, params: unknown[] = []): Promise<unknown> {
   return res.json();
 }
 
+function listingToParams(l: Listing, now: string): unknown[] {
+  return [
+    l.id, l.source, l.sourceId, l.sourceUrl, l.brand, l.model, l.version,
+    l.year, l.isNew ? 1 : 0, l.price, l.currency, l.priceArs, l.priceUsd, l.km,
+    l.fuelType, l.transmission, l.bodyType, l.doors, l.isImported ? 1 : 0,
+    l.location, l.province, JSON.stringify(l.imageUrls), l.sellerType, l.verificationBadge,
+    l.acceptsSwap ? 1 : 0, l.hasFinancing ? 1 : 0, l.dealScore, l.consumption, l.tankCapacity,
+    now, now, 1,
+  ];
+}
+
+const COLUMNS = `id, source, source_id, source_url, brand, model, version,
+  year, is_new, price, currency, price_ars, price_usd, km,
+  fuel_type, transmission, body_type, doors, is_imported,
+  location, province, image_urls, seller_type, verification_badge,
+  accepts_swap, has_financing, deal_score, consumption, tank_capacity,
+  created_at, updated_at, is_active`;
+
+const PLACEHOLDERS_ONE = `(${Array(32).fill("?").join(",")})`;
+
 async function insertListings(listings: Listing[]): Promise<number> {
   let inserted = 0;
   const now = new Date().toISOString();
 
   for (let i = 0; i < listings.length; i += BATCH_SIZE) {
     const batch = listings.slice(i, i + BATCH_SIZE);
+    const placeholders = batch.map(() => PLACEHOLDERS_ONE).join(",");
+    const allParams = batch.flatMap((l) => listingToParams(l, now));
 
-    for (const l of batch) {
-      try {
-        await queryD1(
-          `INSERT OR REPLACE INTO listings (
-            id, source, source_id, source_url, brand, model, version,
-            year, is_new, price, currency, price_ars, price_usd, km,
-            fuel_type, transmission, body_type, doors, is_imported,
-            location, province, image_urls, seller_type, verification_badge,
-            accepts_swap, has_financing, deal_score, consumption, tank_capacity,
-            created_at, updated_at, is_active
-          ) VALUES (
-            ?, ?, ?, ?, ?, ?, ?,
-            ?, ?, ?, ?, ?, ?, ?,
-            ?, ?, ?, ?, ?,
-            ?, ?, ?, ?, ?,
-            ?, ?, ?, ?, ?,
-            ?, ?, ?
-          )`,
-          [
-            l.id, l.source, l.sourceId, l.sourceUrl, l.brand, l.model, l.version,
-            l.year, l.isNew ? 1 : 0, l.price, l.currency, l.priceArs, l.priceUsd, l.km,
-            l.fuelType, l.transmission, l.bodyType, l.doors, l.isImported ? 1 : 0,
-            l.location, l.province, JSON.stringify(l.imageUrls), l.sellerType, l.verificationBadge,
-            l.acceptsSwap ? 1 : 0, l.hasFinancing ? 1 : 0, l.dealScore, l.consumption, l.tankCapacity,
-            now, now, 1,
-          ]
-        );
-        inserted++;
-      } catch (err) {
-        console.error(`  Error inserting ${l.id}:`, err);
+    try {
+      await queryD1(
+        `INSERT OR REPLACE INTO listings (${COLUMNS}) VALUES ${placeholders}`,
+        allParams
+      );
+      inserted += batch.length;
+    } catch (err) {
+      console.error(`  Batch error at offset ${i}, falling back to individual inserts:`, err);
+      for (const l of batch) {
+        try {
+          await queryD1(
+            `INSERT OR REPLACE INTO listings (${COLUMNS}) VALUES ${PLACEHOLDERS_ONE}`,
+            listingToParams(l, now)
+          );
+          inserted++;
+        } catch (e2) {
+          console.error(`  Error inserting ${l.id}:`, e2);
+        }
       }
     }
 
-    if (i + BATCH_SIZE < listings.length) await sleep(200);
+    const progress = Math.min(i + BATCH_SIZE, listings.length);
+    process.stdout.write(`\r  ${progress}/${listings.length} written...`);
+
+    if (i + BATCH_SIZE < listings.length) await sleep(100);
   }
 
+  console.log();
   return inserted;
 }
 
