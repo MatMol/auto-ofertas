@@ -183,18 +183,40 @@ async function main() {
 
   const allListings: Listing[] = [];
   const seenIds = new Set<string>();
+  const MAX_CONSECUTIVE_FAILURES = 3;
+  let consecutiveFailures = 0;
 
   for (let page = 1; page <= MAX_PAGES; page++) {
     const url = `${BASE_URL}/bus.asp?condicion=Usados&segmento=0&pagina=${page}`;
     process.stdout.write(`  Page ${page}/${MAX_PAGES}...`);
 
     try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 30000);
       const res = await fetch(url, {
-        headers: { "User-Agent": UA, Accept: "text/html" },
+        headers: {
+          "User-Agent": UA,
+          Accept:
+            "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+          "Accept-Language": "es-AR,es;q=0.9,en;q=0.8",
+          "Accept-Encoding": "gzip, deflate, br",
+          "Sec-Fetch-Dest": "document",
+          "Sec-Fetch-Mode": "navigate",
+          "Sec-Fetch-Site": "none",
+        },
+        signal: controller.signal,
       });
+      clearTimeout(timeout);
       if (!res.ok) {
         console.log(` HTTP ${res.status}`);
-        break;
+        consecutiveFailures++;
+        if (consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
+          console.log(
+            `  ${MAX_CONSECUTIVE_FAILURES} consecutive failures — site may be unreachable, stopping.`
+          );
+          break;
+        }
+        continue;
       }
 
       const html = await res.text();
@@ -209,13 +231,27 @@ async function main() {
         }
       }
 
+      consecutiveFailures = 0;
       console.log(` ${added} new (${allListings.length} total)`);
       if (added === 0 && page > 1) {
         console.log("  No more results");
         break;
       }
     } catch (err) {
-      console.log(` error: ${err}`);
+      const isTimeout =
+        err instanceof Error && err.name === "AbortError";
+      console.log(
+        isTimeout
+          ? " timeout (30s) — site not responding"
+          : ` error: ${err}`
+      );
+      consecutiveFailures++;
+      if (consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
+        console.log(
+          `  ${MAX_CONSECUTIVE_FAILURES} consecutive failures — site may be unreachable, stopping.`
+        );
+        break;
+      }
     }
 
     if (page < MAX_PAGES) await sleep(DELAY_MS);
