@@ -1,14 +1,14 @@
-name: Scrape MercadoLibre (disabled — runs from Windows PC)
+name: Cleanup stale listings
 
-# ML scraping runs from a residential IP via Windows Task Scheduler.
-# This workflow is kept for reference / manual testing only.
 on:
+  schedule:
+    - cron: '0 6 * * 0'
   workflow_dispatch: {}
 
 jobs:
-  scrape:
+  cleanup:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 10
 
     steps:
       - uses: actions/checkout@v4
@@ -23,8 +23,8 @@ jobs:
       - name: Install dependencies
         run: pnpm install
 
-      - name: Run MercadoLibre scraper
-        run: pnpm scrape:ml
+      - name: Run cleanup
+        run: pnpm cleanup
         env:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}

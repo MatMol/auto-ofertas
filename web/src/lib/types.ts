@@ -1,4 +1,4 @@
-export type Source = "mercadolibre" | "demotores" | "autocosmos" | "kavak";
+export type Source = "mercadolibre" | "autocosmos" | "kavak" | "deruedas";
 
 export type FuelType =
   | "nafta"
@@ -200,7 +200,7 @@ export const BODY_TYPE_LABELS: Record<BodyType, string> = {
 
 export const SOURCE_LABELS: Record<Source, string> = {
   mercadolibre: "MercadoLibre",
-  demotores: "DeMotores",
   autocosmos: "Autocosmos",
   kavak: "Kavak",
+  deruedas: "deRuedas",
 };
