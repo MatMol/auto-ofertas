@@ -253,7 +253,7 @@ export async function getBrands(): Promise<{ brand: string; count: number }[]> {
   const db = await getDB();
   const { results } = await db
     .prepare(
-      "SELECT brand, COUNT(*) as count FROM listings WHERE is_active = 1 GROUP BY brand ORDER BY brand ASC"
+      "SELECT brand, COUNT(*) as count FROM listings WHERE is_active = 1 GROUP BY brand ORDER BY COUNT(*) DESC"
     )
     .all();
 
