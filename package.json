@@ -12,10 +12,13 @@
     "scrape:kavak": "tsx scripts/scrape-kavak.ts",
     "scrape:deruedas": "tsx scripts/scrape-deruedas.ts",
     "scrape:autocosmos": "tsx scripts/scrape-autocosmos.ts",
+    "scrape:others": "tsx scripts/scrape-others.ts",
+    "scrape:all": "tsx scripts/scrape-all.ts",
     "cleanup": "tsx scripts/cleanup.ts"
   },
   "devDependencies": {
     "cheerio": "^1.2.0",
+    "dotenv": "^17.3.1",
     "tsx": "^4.21.0",
     "typescript": "^5"
   }

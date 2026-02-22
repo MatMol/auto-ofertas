@@ -15,6 +15,7 @@
  *   D1_DATABASE_ID
  */
 
+import "./lib/env.js";
 import { validateEnv, queryD1 } from "./lib/d1.js";
 
 const MAX_ACTIVE_LISTINGS = 80_000;

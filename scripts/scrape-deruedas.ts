@@ -1,6 +1,6 @@
 /**
  * deRuedas Argentina scraper — HTML scraping with Cheerio.
- * Server-rendered ASP pages. Runs from GitHub Actions.
+ * Server-rendered ASP pages with divCar containers. Runs from GitHub Actions.
  *
  * Environment variables required:
  *   CLOUDFLARE_ACCOUNT_ID
@@ -8,6 +8,7 @@
  *   D1_DATABASE_ID
  */
 
+import "./lib/env.js";
 import * as cheerio from "cheerio";
 import type { Listing } from "./lib/types.js";
 import {
@@ -25,71 +26,67 @@ const DELAY_MS = 2000;
 const MAX_PAGES = 50;
 const BASE_URL = "https://www.deruedas.com.ar";
 const UA =
-  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-function parseListingFromHtml(
-  html: string,
-  _url: string
-): Listing[] {
+function parseListingsFromHtml(html: string): Listing[] {
   const $ = cheerio.load(html);
   const listings: Listing[] = [];
   const now = new Date().toISOString();
 
-  $("a[href*='/vendo/']").each((_i, el) => {
+  $(".divCar_2").each((_i, el) => {
     try {
-      const link = $(el);
-      const href = link.attr("href") ?? "";
-      if (!href.includes("/vendo/")) return;
+      const card = $(el);
 
-      const codMatch = href.match(/cod=(\d+)/);
+      const titleLink = card.find("a.titulo.redirect-result").first();
+      if (!titleLink.length) return;
+
+      const href = titleLink.attr("href") ?? "";
+      const dataCar = titleLink.attr("data-car") ?? "";
+      const codMatch = href.match(/cod=(\d+)/) || dataCar.match(/car_(\d+)/);
       if (!codMatch) return;
       const sourceId = codMatch[1];
 
-      const fullUrl = href.startsWith("http") ? href : `${BASE_URL}${href}`;
+      const fullUrl = href.startsWith("http")
+        ? href
+        : `${BASE_URL}${href}`;
 
-      const textContent = link.text().replace(/\s+/g, " ").trim();
+      const h2 = titleLink.find("h2").text().trim();
+      const parts = h2.split(/\s+/);
+      const brand = fixBrand(parts[0] ?? "");
+      const model = parts.slice(1).join(" ");
 
-      const pathParts = href.split("/").filter(Boolean);
-      const brandRaw = pathParts.find(
-        (_p, i) => i > 0 && pathParts[i - 1] === "vendo"
-      );
-      const modelRaw = pathParts[pathParts.indexOf(brandRaw ?? "") + 1];
+      const versionSpan = titleLink
+        .find("span[style*='font-weight:normal']")
+        .text()
+        .trim();
+      const version = versionSpan || null;
 
-      if (!brandRaw || !modelRaw) return;
+      const priceSpan = card
+        .find("span.titulo")
+        .not("a.titulo")
+        .first()
+        .text()
+        .trim();
+      const isUsd = priceSpan.includes("U$") || priceSpan.includes("u$");
+      const priceNum =
+        parseInt(priceSpan.replace(/[^\d]/g, ""), 10) || 0;
+      if (!priceNum) return;
 
-      const brand = fixBrand(brandRaw.replace(/-/g, " "));
-      const model = modelRaw.replace(/-/g, " ");
-
-      const versionMatch = textContent.match(
-        /^(.+?)(?:\$|U\$|u\$|\d{4})/
-      );
-      const version = versionMatch
-        ? versionMatch[1].replace(brand, "").replace(model, "").trim() || null
-        : null;
-
-      const priceMatch = textContent.match(
-        /(?:U?\$\s*)([\d.]+(?:[\d.]*)*)/
-      );
-      const priceStr = priceMatch ? priceMatch[1].replace(/\./g, "") : "0";
-      const price = parseInt(priceStr, 10) || 0;
-      if (!price) return;
-
-      const isUsd =
-        textContent.includes("U$") || textContent.includes("u$");
-
-      const yearMatch = textContent.match(/\b(19\d{2}|20[0-2]\d)\b/);
-      const year = yearMatch ? parseInt(yearMatch[1], 10) : 0;
-
-      const kmMatch = textContent.match(/([\d.]+)\s*[Kk][Mm]/);
-      const km = kmMatch
-        ? parseInt(kmMatch[1].replace(/\./g, ""), 10)
-        : 0;
+      const infoSpan = card
+        .find("span.titulo")
+        .not("a.titulo")
+        .first()
+        .parent()
+        .find("span.texto")
+        .first()
+        .text()
+        .trim();
 
       const fuelTypes = ["Diesel", "GNC", "Nafta", "Eléctrico", "Híbrido"];
       const fuelMatch = fuelTypes.find((f) =>
-        textContent.toLowerCase().includes(f.toLowerCase())
+        infoSpan.toLowerCase().includes(f.toLowerCase())
       );
       const fuelType = fuelMatch
         ? fuelMatch.toLowerCase() === "eléctrico"
@@ -99,20 +96,44 @@ function parseListingFromHtml(
             : fuelMatch.toLowerCase()
         : null;
 
-      const locationParts = href.split("/");
-      const conditionIdx = locationParts.indexOf("Usados");
-      const province =
-        conditionIdx >= 0
-          ? fixProvince(
-              (locationParts[conditionIdx + 1] ?? "Argentina").replace(
-                /-/g,
-                " "
-              )
-            )
-          : "Argentina";
+      const yearMatch = infoSpan.match(/\b(19\d{2}|20[0-2]\d)\b/);
+      const year = yearMatch ? parseInt(yearMatch[1], 10) : 0;
 
-      const priceArs = isUsd ? Math.round(price * USD_RATE) : price;
-      const priceUsd = isUsd ? price : Math.round(price / USD_RATE);
+      const detailText = card
+        .find("td[colspan] span.texto")
+        .first()
+        .text()
+        .trim();
+
+      const kmMatch = detailText.match(/([\d.]+)\s*[Kk][Mm]/);
+      const km = kmMatch
+        ? parseInt(kmMatch[1].replace(/\./g, ""), 10)
+        : 0;
+
+      const locationRaw = detailText
+        .replace(/[\d.]+\s*[Kk][Mm]/, "")
+        .replace(/^\s*\n?\s*/, "")
+        .trim();
+      const province = fixProvince(locationRaw);
+
+      const hasFinancing = card
+        .text()
+        .toLowerCase()
+        .includes("cuota");
+
+      const pathParts = href.split("/");
+      const condIdx = pathParts.indexOf("Usados");
+      const urlProvince =
+        condIdx >= 0
+          ? fixProvince(
+              decodeURIComponent(pathParts[condIdx + 1] ?? "").replace(/-/g, " ")
+            )
+          : province;
+
+      const priceArs = isUsd ? Math.round(priceNum * USD_RATE) : priceNum;
+      const priceUsd = isUsd ? priceNum : Math.round(priceNum / USD_RATE);
+
+      const hasDealerLogo = card.find("img[alt]").length > 0;
 
       listings.push({
         id: `deruedas-${sourceId}`,
@@ -124,7 +145,7 @@ function parseListingFromHtml(
         version,
         year,
         isNew: km === 0 && year >= new Date().getFullYear(),
-        price,
+        price: priceNum,
         currency: isUsd ? "USD" : "ARS",
         priceArs,
         priceUsd,
@@ -134,13 +155,13 @@ function parseListingFromHtml(
         bodyType: null,
         doors: null,
         isImported: IMPORTED_BRANDS.has(brand),
-        location: province,
-        province,
+        location: locationRaw || urlProvince,
+        province: urlProvince || province,
         imageUrls: [],
-        sellerType: "concesionaria",
+        sellerType: hasDealerLogo ? "concesionaria" : "particular",
         verificationBadge: null,
         acceptsSwap: false,
-        hasFinancing: textContent.toLowerCase().includes("cuota"),
+        hasFinancing,
         dealScore: 0,
         consumption: null,
         tankCapacity: null,
@@ -163,10 +184,9 @@ async function main() {
   const allListings: Listing[] = [];
   const seenIds = new Set<string>();
 
-  for (let page = 0; page < MAX_PAGES; page++) {
-    const offset = page * 30;
-    const url = `${BASE_URL}/bus.asp?condicion=Usados&segmento=0&pagina=${page + 1}`;
-    process.stdout.write(`  Page ${page + 1}/${MAX_PAGES}...`);
+  for (let page = 1; page <= MAX_PAGES; page++) {
+    const url = `${BASE_URL}/bus.asp?condicion=Usados&segmento=0&pagina=${page}`;
+    process.stdout.write(`  Page ${page}/${MAX_PAGES}...`);
 
     try {
       const res = await fetch(url, {
@@ -178,7 +198,7 @@ async function main() {
       }
 
       const html = await res.text();
-      const pageListings = parseListingFromHtml(html, url);
+      const pageListings = parseListingsFromHtml(html);
 
       let added = 0;
       for (const listing of pageListings) {
@@ -190,7 +210,7 @@ async function main() {
       }
 
       console.log(` ${added} new (${allListings.length} total)`);
-      if (added === 0 && page > 0) {
+      if (added === 0 && page > 1) {
         console.log("  No more results");
         break;
       }
@@ -198,7 +218,7 @@ async function main() {
       console.log(` error: ${err}`);
     }
 
-    if (page < MAX_PAGES - 1) await sleep(DELAY_MS);
+    if (page < MAX_PAGES) await sleep(DELAY_MS);
   }
 
   if (allListings.length === 0) {

@@ -1,35 +1,12 @@
-name: Scrape other sites (Kavak, deRuedas, Autocosmos)
+name: Scrape other sites (deRuedas, Autocosmos)
 
+# Kavak also blocks cloud IPs — run it from residential IP alongside ML.
 on:
   schedule:
     - cron: '0 10 * * *'
   workflow_dispatch: {}
 
 jobs:
-  scrape-kavak:
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: pnpm/action-setup@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          cache: pnpm
-
-      - name: Install dependencies
-        run: pnpm install
-
-      - name: Scrape Kavak
-        run: pnpm scrape:kavak
-        env:
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          D1_DATABASE_ID: ${{ secrets.D1_DATABASE_ID }}
-
   scrape-deruedas:
     runs-on: ubuntu-latest
     timeout-minutes: 30

@@ -6,7 +6,7 @@ const DB_ID = process.env.D1_DATABASE_ID!;
 
 const D1_URL = `https://api.cloudflare.com/client/v4/accounts/${ACCOUNT_ID}/d1/database/${DB_ID}/query`;
 
-const BATCH_SIZE = 25;
+const BATCH_SIZE = 3;
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 

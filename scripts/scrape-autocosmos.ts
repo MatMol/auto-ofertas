@@ -1,6 +1,7 @@
 /**
  * Autocosmos Argentina scraper — HTML scraping with Cheerio.
- * Server-rendered pages (IIS/C#). Runs from GitHub Actions.
+ * Uses structured listing-card elements with schema.org microdata.
+ * Runs from GitHub Actions.
  *
  * Environment variables required:
  *   CLOUDFLARE_ACCOUNT_ID
@@ -8,6 +9,7 @@
  *   D1_DATABASE_ID
  */
 
+import "./lib/env.js";
 import * as cheerio from "cheerio";
 import type { Listing } from "./lib/types.js";
 import {
@@ -25,7 +27,7 @@ const DELAY_MS = 2000;
 const MAX_PAGES = 100;
 const BASE_URL = "https://www.autocosmos.com.ar";
 const UA =
-  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -34,65 +36,83 @@ function parseListingsFromHtml(html: string): Listing[] {
   const listings: Listing[] = [];
   const now = new Date().toISOString();
 
-  $("a[href*='/auto/usado/']").each((_i, el) => {
+  $("a[itemprop='url'][href*='/auto/usado/']").each((_i, el) => {
     try {
       const link = $(el);
       const href = link.attr("href") ?? "";
-      if (!href.includes("/auto/usado/")) return;
 
-      const pathParts = href
-        .replace(/^\//, "")
-        .split("/")
-        .filter(Boolean);
+      const pathParts = href.replace(/^\//, "").split("/").filter(Boolean);
       // Format: auto/usado/{brand}/{model}/{version}/{id}
-      if (pathParts.length < 5) return;
+      if (pathParts.length < 6) return;
 
       const brandRaw = pathParts[2];
       const modelRaw = pathParts[3];
       const versionRaw = pathParts[4];
-      const sourceId = pathParts[5] ?? "";
+      const sourceId = pathParts[5];
       if (!sourceId || sourceId.length < 10) return;
 
-      const brand = fixBrand(brandRaw.replace(/-/g, " "));
-      const model = modelRaw.replace(/-/g, " ");
-      const version = versionRaw.replace(/-/g, " ");
+      const brand = fixBrand(decodeURIComponent(brandRaw).replace(/-/g, " "));
+      const model = decodeURIComponent(modelRaw).replace(/-/g, " ");
+      const version = decodeURIComponent(versionRaw).replace(/-/g, " ");
+      const fullUrl = `${BASE_URL}${href}`;
 
-      const fullUrl = href.startsWith("http") ? href : `${BASE_URL}${href}`;
+      const card = link.find(".listing-card__content").length
+        ? link
+        : link.closest("[itemscope]");
 
-      const text = link.text().replace(/\s+/g, " ").trim();
+      const brandEl = card.find(".listing-card__brand");
+      const finalBrand = brandEl.length
+        ? fixBrand(brandEl.text().trim())
+        : brand;
 
-      const yearMatch = text.match(/\b(20[0-2]\d|19\d{2})\b/);
-      const year = yearMatch ? parseInt(yearMatch[1], 10) : 0;
+      const modelEl = card.find(".listing-card__model");
+      const finalModel = modelEl.length ? modelEl.text().trim() : model;
 
-      const kmMatch = text.match(/([\d.]+)\s*km/i);
-      const km = kmMatch
-        ? parseInt(kmMatch[1].replace(/\./g, ""), 10)
-        : 0;
+      const versionEl = card.find(".listing-card__version");
+      const finalVersion = versionEl.length
+        ? versionEl.text().trim()
+        : version;
 
-      const isUsd = text.includes("u$s") || text.includes("US$") || text.includes("u$");
-      const priceMatch = text.match(
-        /(?:Anticipo:\s*)?(?:u\$s?\s*)?(?:US\$\s*)?\$?\s*([\d.,]+)/i
-      );
-      let price = 0;
-      if (priceMatch) {
+      const yearEl = card.find(".listing-card__year");
+      const year = yearEl.length ? parseInt(yearEl.text().trim(), 10) || 0 : 0;
+
+      const kmEl = card.find(".listing-card__km");
+      const kmText = kmEl.length ? kmEl.text().trim() : "";
+      const km = parseInt(kmText.replace(/[^\d]/g, ""), 10) || 0;
+
+      const currencyMeta = card.find("meta[itemprop='priceCurrency']");
+      const currencyRaw = currencyMeta.attr("content") ?? "ARS";
+      const isUsd =
+        currencyRaw === "USD" ||
+        currencyRaw === "U$S" ||
+        link.attr("title")?.includes("u$s") ||
+        false;
+
+      const priceEl = card.find(".listing-card__price-value");
+      const priceContent = priceEl.attr("content") ?? "";
+      const priceText = priceEl.text().trim();
+      let price = parseInt(priceContent, 10) || 0;
+      if (!price) {
         price =
-          parseInt(priceMatch[1].replace(/\./g, "").replace(",", ""), 10) || 0;
+          parseInt(priceText.replace(/[^\d]/g, ""), 10) || 0;
       }
       if (!price) return;
 
-      const locationMatch = text.match(
-        /(\w[\w\s]*?)\s*\|\s*(\w[\w\s]*?)(?:\s*Anticipo|\s*Cuota|\s*u\$s|\s*\$|$)/
-      );
-      const location = locationMatch
-        ? `${locationMatch[1].trim()} - ${locationMatch[2].trim()}`
-        : "Argentina";
-      const province = locationMatch
-        ? fixProvince(locationMatch[2].trim())
-        : "Argentina";
+      const priceTitle = card.find(".listing-card__price-title").text().trim();
+      const hasFinancing = priceTitle.toLowerCase().includes("anticipo");
 
-      const hasFinancing =
-        text.toLowerCase().includes("anticipo") ||
-        text.toLowerCase().includes("cuota");
+      const cityEl = card.find(".listing-card__city");
+      const provinceEl = card.find(".listing-card__province");
+      const city = cityEl.text().replace("|", "").trim();
+      const province = provinceEl.length
+        ? fixProvince(provinceEl.text().trim())
+        : "Argentina";
+      const location = city ? `${city}, ${province}` : province;
+
+      const imgEl = card.find("img[itemprop='image']");
+      const imgSrc =
+        imgEl.attr("content") ?? imgEl.attr("src") ?? "";
+      const imageUrls = imgSrc ? [imgSrc] : [];
 
       const priceArs = isUsd ? Math.round(price * USD_RATE) : price;
       const priceUsd = isUsd ? price : Math.round(price / USD_RATE);
@@ -102,9 +122,9 @@ function parseListingsFromHtml(html: string): Listing[] {
         source: "autocosmos",
         sourceId,
         sourceUrl: fullUrl,
-        brand,
-        model,
-        version,
+        brand: finalBrand,
+        model: finalModel,
+        version: finalVersion,
         year,
         isNew: km === 0 && year >= new Date().getFullYear(),
         price,
@@ -116,10 +136,10 @@ function parseListingsFromHtml(html: string): Listing[] {
         transmission: null,
         bodyType: null,
         doors: null,
-        isImported: IMPORTED_BRANDS.has(brand),
+        isImported: IMPORTED_BRANDS.has(finalBrand),
         location,
         province,
-        imageUrls: [],
+        imageUrls,
         sellerType: "concesionaria",
         verificationBadge: null,
         acceptsSwap: false,

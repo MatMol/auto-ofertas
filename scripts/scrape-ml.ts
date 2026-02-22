@@ -10,6 +10,7 @@
  *   D1_DATABASE_ID
  */
 
+import "./lib/env.js";
 import type { Listing, PolycardData } from "./lib/types.js";
 import {
   inferAttributes,

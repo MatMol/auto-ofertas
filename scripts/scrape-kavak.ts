@@ -8,6 +8,7 @@
  *   D1_DATABASE_ID
  */
 
+import "./lib/env.js";
 import type { Listing } from "./lib/types.js";
 import {
   fixBrand,
