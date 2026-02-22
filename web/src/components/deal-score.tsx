@@ -9,7 +9,7 @@ import {
 } from "@/components/ui/tooltip";
 
 const SCORE_EXPLANATION = [
-  { label: "Precio vs. mercado", weight: "40%", desc: "Compara el precio contra autos similares" },
+  { label: "Precio vs. mercado", weight: "40%", desc: "Compara el precio contra autos del mismo modelo y año similar" },
   { label: "Kilómetros", weight: "20%", desc: "Menos km recorridos = mejor puntaje" },
   { label: "Precio por km", weight: "15%", desc: "Cuánto pagás por cada km de uso" },
   { label: "Info completa", weight: "10%", desc: "Fotos, descripción y datos del vendedor" },
@@ -24,8 +24,8 @@ function ScoreTooltipContent() {
         ¿Cómo se calcula el Deal Score?
       </p>
       <p className="text-xs opacity-80 leading-relaxed">
-        Analizamos cada auto comparándolo con otros del mismo modelo y año. Un
-        puntaje más alto significa mejor relación precio/valor.
+        Analizamos cada auto comparándolo con otros del mismo modelo, versión y
+        año similar. Un puntaje más alto significa mejor relación precio/valor.
       </p>
       <div className="space-y-1.5">
         {SCORE_EXPLANATION.map((item) => (

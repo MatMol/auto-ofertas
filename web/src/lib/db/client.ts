@@ -198,8 +198,24 @@ export async function getSimilarListings(
   return (results ?? []).map((r) => rowToListing(r as Record<string, unknown>));
 }
 
-export async function getAvgPriceArs(brand: string, model: string): Promise<number> {
+export async function getAvgPriceArs(
+  brand: string,
+  model: string,
+  year?: number
+): Promise<number> {
   const db = await getDB();
+
+  if (year && year > 0) {
+    const row = await db
+      .prepare(
+        "SELECT AVG(price_ars) as avg_price FROM listings WHERE is_active = 1 AND brand = ? AND model = ? AND year BETWEEN ? AND ?"
+      )
+      .bind(brand, model, year - 2, year + 2)
+      .first<{ avg_price: number | null }>();
+
+    if (row?.avg_price) return row.avg_price;
+  }
+
   const row = await db
     .prepare(
       "SELECT AVG(price_ars) as avg_price FROM listings WHERE is_active = 1 AND brand = ? AND model = ?"

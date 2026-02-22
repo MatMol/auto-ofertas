@@ -65,7 +65,7 @@ export default async function AutoDetailPage({
 
   const [similar, avgPriceArs] = await Promise.all([
     getSimilarListings(listing.brand, listing.model, listing.id, 3),
-    getAvgPriceArs(listing.brand, listing.model),
+    getAvgPriceArs(listing.brand, listing.model, listing.year),
   ]);
 
   const effectiveAvg = avgPriceArs || listing.priceArs;
@@ -221,10 +221,10 @@ export default async function AutoDetailPage({
               {/* Price comparison */}
               <div className="p-3 rounded-lg bg-muted/50 space-y-2">
                 <p className="text-xs font-medium text-muted-foreground">
-                  vs. precio promedio de mercado
+                  vs. precio promedio (modelo y año similar)
                 </p>
                 <div className="flex items-center gap-2">
-                  <div className="flex-1 h-2 rounded-full bg-muted overflow-hidden" role="img" aria-label={`Este auto está ${priceDiffPct <= 0 ? Math.abs(priceDiffPct) + "% por debajo" : priceDiffPct + "% por encima"} del precio promedio de mercado`}>
+                  <div className="flex-1 h-2 rounded-full bg-muted overflow-hidden" role="img" aria-label={`Este auto está ${priceDiffPct <= 0 ? Math.abs(priceDiffPct) + "% por debajo" : priceDiffPct + "% por encima"} del precio promedio para modelo y año similar`}>
                     <div
                       className={`h-full rounded-full ${
                         priceDiffPct <= -10
