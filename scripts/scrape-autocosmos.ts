@@ -26,6 +26,9 @@ import { validateEnv, insertListings, updateBrandsModels } from "./lib/d1.js";
 const DELAY_MS = 2000;
 const MAX_PAGES = 100;
 const BASE_URL = "https://www.autocosmos.com.ar";
+/** Precio mínimo en ARS para considerar un listing válido (evita capturar "200" de "200 tsi" etc.) */
+const MIN_PRICE_ARS = 1_000_000;
+const MIN_PRICE_USD = 1_000;
 const UA =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
 
@@ -88,15 +91,28 @@ function parseListingsFromHtml(html: string): Listing[] {
         link.attr("title")?.includes("u$s") ||
         false;
 
+      // Prefer schema.org meta[itemprop="price"] (número limpio); fallback a elementos con clase
+      const priceMeta = card.find("meta[itemprop='price']");
+      const priceMetaContent = priceMeta.attr("content") ?? "";
       const priceEl = card.find(".listing-card__price-value");
-      const priceContent = priceEl.attr("content") ?? "";
-      const priceText = priceEl.text().trim();
-      let price = parseInt(priceContent, 10) || 0;
-      if (!price) {
-        price =
-          parseInt(priceText.replace(/[^\d]/g, ""), 10) || 0;
+      const priceContent = (priceEl.attr("content") ?? priceMetaContent).trim();
+      const priceText = priceEl.length ? priceEl.text().trim() : "";
+      // Remover puntos/espacios (formato AR: "20.000.000" o "20 000 000")
+      const digitsFromContent = priceContent.replace(/[^\d]/g, "");
+      let price = digitsFromContent ? parseInt(digitsFromContent, 10) || 0 : 0;
+      if (!price && priceText) {
+        const digitsOnly = priceText.replace(/[^\d]/g, "");
+        // Evitar capturar "200" de "200 tsi" — precios reales tienen al menos 5 dígitos (ej. 20000)
+        if (digitsOnly.length >= 5) {
+          price = parseInt(digitsOnly, 10) || 0;
+        }
       }
       if (!price) return;
+
+      const priceArs = isUsd ? Math.round(price * USD_RATE) : price;
+      const priceUsd = isUsd ? price : Math.round(price / USD_RATE);
+      // Filtrar precios absurdos (ej. "200" de "200 tsi" o anticipos mal parseados)
+      if (priceArs < MIN_PRICE_ARS || (isUsd && price < MIN_PRICE_USD)) return;
 
       const priceTitle = card.find(".listing-card__price-title").text().trim();
       const hasFinancing = priceTitle.toLowerCase().includes("anticipo");
@@ -113,9 +129,6 @@ function parseListingsFromHtml(html: string): Listing[] {
       const imgSrc =
         imgEl.attr("content") ?? imgEl.attr("src") ?? "";
       const imageUrls = imgSrc ? [imgSrc] : [];
-
-      const priceArs = isUsd ? Math.round(price * USD_RATE) : price;
-      const priceUsd = isUsd ? price : Math.round(price / USD_RATE);
 
       listings.push({
         id: `autocosmos-${sourceId}`,

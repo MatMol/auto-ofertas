@@ -21,12 +21,18 @@ import { validateEnv, queryD1 } from "./lib/d1.js";
 const MAX_ACTIVE_LISTINGS = 80_000;
 const STALE_DAYS = 7;
 const DELETE_AFTER_DAYS = 14;
+/** Precio mínimo en ARS — listings por debajo son datos mal parseados (ej. "200" de "200 tsi") */
+const MIN_PRICE_ARS = 1_000_000;
 
 async function main() {
   validateEnv();
   console.log("=== AutoOfertas — Cleanup ===\n");
 
   const now = new Date().toISOString();
+
+  console.log("0. Removing listings with absurd prices (e.g. Autocosmos parse errors)...");
+  await queryD1("DELETE FROM listings WHERE price_ars < ?", [MIN_PRICE_ARS]);
+  console.log("   Done.\n");
   const staleDate = new Date(
     Date.now() - STALE_DAYS * 24 * 60 * 60 * 1000
   ).toISOString();
