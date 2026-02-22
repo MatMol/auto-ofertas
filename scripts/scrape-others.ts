@@ -5,9 +5,10 @@
 
 import "./lib/env.js";
 import { execSync } from "child_process";
-import { resolve } from "path";
+import { resolve, dirname } from "path";
+import { fileURLToPath } from "url";
 
-const root = resolve(import.meta.dirname, "..");
+const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
 const scrapers = [
   { name: "Kavak", script: "scripts/scrape-kavak.ts" },

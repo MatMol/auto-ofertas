@@ -46,34 +46,32 @@ function kavakCarToListing(car: Record<string, unknown>): Listing | null {
   const id = String(car.id ?? "");
   if (!id) return null;
 
-  const name = String(car.name ?? "");
-  const titleParts = name.split("•").map((s: string) => s.trim());
-  const brand = fixBrand(titleParts[0] ?? "");
-  const modelFull = titleParts[1] ?? "";
-  const modelParts = modelFull.split(" ");
-  const model = modelParts[0] ?? "";
-  const version = modelParts.length > 1 ? modelParts.slice(1).join(" ") : null;
+  const brand = fixBrand(String(car.make ?? ""));
+  const model = String(car.model ?? "");
+  const version = car.trim ? String(car.trim) : null;
+  if (!brand || !model) return null;
 
   const priceStr = String(car.price ?? "0");
   const price = parsePrice(priceStr);
   if (!price) return null;
 
   const year = Number(car.year) || 0;
-  const kmStr = String(car.km ?? "0");
-  const km = parseKm(kmStr);
-  const url = String(car.url ?? `https://www.kavak.com/ar/compra/${id}`);
+  const km = Number(car.kmNoFormat) || parseKm(String(car.km ?? "0"));
+
+  const rawUrl = String(car.url ?? "");
+  const url = rawUrl.startsWith("http")
+    ? rawUrl
+    : `https://www.kavak.com${rawUrl.startsWith("/") ? "" : "/"}${rawUrl}`;
 
   const transmission = String(car.transmission ?? "").toLowerCase();
   const transmissionNorm =
-    transmission.includes("auto") ? "automatica" :
+    transmission.includes("auto") || transmission.includes("automát") ? "automatica" :
     transmission.includes("manual") ? "manual" : null;
 
-  const analytics = car.analytics as Record<string, unknown> | undefined;
-  const location = analytics?.car_location
-    ? String(analytics.car_location)
-    : "Argentina";
+  const regionName = String(car.regionName ?? "");
+  const location = regionName || "Buenos Aires";
 
-  const imageUrl = String(car.image ?? "");
+  const imageUrl = String(car.imageUrl ?? car.image ?? "");
   const imageUrls = imageUrl ? [imageUrl] : [];
 
   const isUsd = priceStr.includes("US") || priceStr.includes("U$");
@@ -139,11 +137,12 @@ async function main() {
       }
 
       const data = (await res.json()) as {
-        data?: { hits?: Record<string, unknown>[]; total?: number };
+        cars?: Record<string, unknown>[];
         pagination?: { total?: number };
+        total?: number;
       };
 
-      const cars = data.data?.hits ?? [];
+      const cars = data.cars ?? [];
       totalPages = data.pagination?.total ?? 1;
 
       let added = 0;
