@@ -20,7 +20,7 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "AutoOfertas AR - Las mejores ofertas de autos en Argentina",
   description:
-    "Encontrá el mejor auto al mejor precio. Comparamos MercadoLibre, DeMotores, Autocosmos y Kavak para mostrarte las mejores ofertas.",
+    "Encontrá el mejor auto al mejor precio. Comparamos MercadoLibre, deRuedas, Autocosmos y Kavak para mostrarte las mejores ofertas.",
 };
 
 function Navbar() {
@@ -73,7 +73,7 @@ function Footer() {
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
             <Car size={16} aria-hidden="true" />
             <span>
-              Auto<strong>Ofertas</strong> AR — Datos de MercadoLibre, DeMotores,
+              Auto<strong>Ofertas</strong> AR — Datos de MercadoLibre, deRuedas,
               Autocosmos y Kavak
             </span>
           </div>

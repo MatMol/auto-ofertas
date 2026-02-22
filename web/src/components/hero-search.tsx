@@ -18,15 +18,15 @@ export function HeroSearch() {
   };
 
   return (
-    <section className="bg-gradient-to-b from-primary/5 to-background py-16 md:py-24">
-      <div className="mx-auto max-w-7xl px-4 text-center space-y-6">
+    <section className="bg-gradient-to-b from-primary/8 to-background py-10 md:py-14">
+      <div className="mx-auto max-w-7xl px-4 text-center space-y-4">
         <h1 className="text-3xl md:text-5xl font-bold tracking-tight">
           Encontrá el mejor auto
           <br />
           <span className="text-emerald-600">al mejor precio</span>
         </h1>
         <p className="text-muted-foreground text-lg max-w-2xl mx-auto">
-          Comparamos miles de publicaciones de MercadoLibre, DeMotores,
+          Comparamos miles de publicaciones de MercadoLibre, deRuedas,
           Autocosmos y Kavak. Te mostramos las mejores ofertas con un
           análisis de precio, estado y costos de tenencia.
         </p>

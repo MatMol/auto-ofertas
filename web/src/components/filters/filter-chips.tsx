@@ -167,6 +167,14 @@ export function FilterChips({ filters, onChange }: FilterChipsProps) {
     });
   }
 
+  if (filters.dealScoreMin !== undefined && filters.dealScoreMin > 0) {
+    chips.push({
+      key: "dealScore",
+      label: `Score ≥ ${filters.dealScoreMin}`,
+      onRemove: () => onChange({ ...filters, dealScoreMin: undefined, page: 1 }),
+    });
+  }
+
   if (chips.length === 0) return null;
 
   return (
@@ -175,11 +183,20 @@ export function FilterChips({ filters, onChange }: FilterChipsProps) {
         <Badge
           key={chip.key}
           variant="secondary"
+          role="button"
+          tabIndex={0}
           className="gap-1 pr-1 cursor-pointer hover:bg-secondary/80"
           onClick={chip.onRemove}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              chip.onRemove();
+            }
+          }}
+          aria-label={`Quitar filtro: ${chip.label}`}
         >
           {chip.label}
-          <X size={12} />
+          <X size={12} aria-hidden="true" />
         </Badge>
       ))}
     </div>

@@ -158,7 +158,7 @@ export default async function AutoDetailPage({
               <Separator />
 
               <div className="grid grid-cols-1 sm:grid-cols-2 divide-y sm:divide-y-0 sm:divide-x">
-                <div className="pr-4 space-y-0.5">
+                <div className="pr-4 space-y-1.5">
                   <InfoRow icon={Calendar} label="Año" value={String(listing.year)} />
                   <InfoRow icon={Gauge} label="Kilómetros" value={formatKm(listing.km)} />
                   {listing.fuelType && (
@@ -180,7 +180,7 @@ export default async function AutoDetailPage({
                     />
                   )}
                 </div>
-                <div className="pl-0 sm:pl-4 space-y-0.5">
+                <div className="pl-0 sm:pl-4 pt-4 sm:pt-0 space-y-1.5">
                   {listing.bodyType && (
                     <InfoRow
                       icon={Car}

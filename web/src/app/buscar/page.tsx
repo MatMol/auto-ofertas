@@ -7,7 +7,8 @@ import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { ListingCard } from "@/components/listing-card";
 import { FilterSidebar } from "@/components/filters/filter-sidebar";
 import { FilterChips } from "@/components/filters/filter-chips";
-import { SlidersHorizontal, ChevronLeft, ChevronRight, Loader2 } from "lucide-react";
+import { SlidersHorizontal, ChevronLeft, ChevronRight, Loader2, Search } from "lucide-react";
+import { Input } from "@/components/ui/input";
 import type { SearchFilters, Listing } from "@/lib/types";
 
 function parseFiltersFromParams(params: URLSearchParams): SearchFilters {
@@ -67,6 +68,7 @@ function SearchContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [queryInput, setQueryInput] = useState("");
   const [listings, setListings] = useState<Listing[]>([]);
   const [total, setTotal] = useState(0);
   const [brands, setBrands] = useState<{ brand: string; count: number }[]>([]);
@@ -76,6 +78,10 @@ function SearchContent() {
     () => parseFiltersFromParams(searchParams),
     [searchParams]
   );
+
+  useEffect(() => {
+    setQueryInput(filters.query ?? "");
+  }, [filters.query]);
 
   const totalPages = Math.ceil(total / (filters.pageSize ?? 12));
 
@@ -129,6 +135,34 @@ function SearchContent() {
 
         {/* Main Content */}
         <div className="flex-1 min-w-0 space-y-4">
+          {/* Search bar */}
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              updateFilters({ ...filters, query: queryInput.trim() || undefined, page: 1 });
+            }}
+            className="flex gap-2"
+          >
+            <div className="relative flex-1">
+              <Search
+                size={18}
+                className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
+                aria-hidden="true"
+              />
+              <Input
+                type="search"
+                value={queryInput}
+                onChange={(e) => setQueryInput(e.target.value)}
+                placeholder="Toyota Corolla 2020, Ford Ranger diesel..."
+                aria-label="Buscar autos por marca, modelo o año"
+                className="pl-10 h-10"
+              />
+            </div>
+            <Button type="submit" size="default" className="h-10 px-4">
+              Buscar
+            </Button>
+          </form>
+
           {/* Mobile filter button + results count */}
           <div className="flex items-center justify-between gap-3">
             <p className="text-sm text-muted-foreground" aria-live="polite" aria-atomic="true">
@@ -165,7 +199,7 @@ function SearchContent() {
 
           {/* Results grid */}
           {loading ? (
-            <div className="flex items-center justify-center py-16">
+            <div className="flex items-center justify-center py-12">
               <Loader2 className="animate-spin text-muted-foreground" size={24} />
             </div>
           ) : listings.length > 0 ? (
@@ -175,7 +209,7 @@ function SearchContent() {
               ))}
             </div>
           ) : (
-            <div className="text-center py-16 space-y-3">
+            <div className="text-center py-12 space-y-3">
               <p className="text-lg font-medium">
                 No encontramos autos con esos filtros
               </p>
@@ -185,7 +219,27 @@ function SearchContent() {
               <Button
                 variant="outline"
                 onClick={() =>
-                  updateFilters({ sortBy: "deal_score", page: 1, pageSize: 12 })
+                  updateFilters({
+                    ...filters,
+                    brands: undefined,
+                    provinces: undefined,
+                    yearMin: undefined,
+                    yearMax: undefined,
+                    priceMin: undefined,
+                    priceMax: undefined,
+                    kmMin: undefined,
+                    kmMax: undefined,
+                    fuelTypes: undefined,
+                    bodyTypes: undefined,
+                    transmissions: undefined,
+                    sellerTypes: undefined,
+                    sources: undefined,
+                    verifiedOnly: false,
+                    acceptsSwap: false,
+                    hasFinancing: false,
+                    dealScoreMin: undefined,
+                    page: 1,
+                  })
                 }
               >
                 Limpiar filtros

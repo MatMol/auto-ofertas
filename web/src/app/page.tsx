@@ -1,6 +1,5 @@
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
 import { ListingCard } from "@/components/listing-card";
 import { HeroSearch } from "@/components/hero-search";
 import { getTopListings } from "@/lib/db/client";
@@ -66,32 +65,23 @@ export default async function HomePage() {
   ]);
 
   return (
-    <div className="space-y-12 pb-16">
+    <div className="space-y-8 pb-10">
       <HeroSearch />
 
       {/* Quick Categories */}
       <section className="mx-auto max-w-7xl px-4">
-        <h2 className="text-xl font-semibold mb-4">Búsquedas rápidas</h2>
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+        <h2 className="text-xl font-semibold mb-3">Búsquedas rápidas</h2>
+        <div className="flex flex-wrap gap-2">
           {QUICK_CATEGORIES.map((cat) => {
             const Icon = cat.icon;
             return (
-              <Link key={cat.label} href={cat.href}>
-                <Card className="cursor-pointer transition-all hover:shadow-md hover:-translate-y-0.5 group h-full">
-                  <CardContent className="p-4 text-center space-y-2">
-                    <Icon
-                      size={28}
-                      className="mx-auto text-muted-foreground group-hover:text-primary transition-colors"
-                      aria-hidden="true"
-                    />
-                    <div>
-                      <p className="font-medium text-sm">{cat.label}</p>
-                      <p className="text-[12px] text-muted-foreground">
-                        {cat.description}
-                      </p>
-                    </div>
-                  </CardContent>
-                </Card>
+              <Link
+                key={cat.label}
+                href={cat.href}
+                className="inline-flex items-center gap-2 rounded-full border border-border bg-background px-4 py-2 text-sm font-medium text-foreground transition-colors hover:bg-accent hover:border-accent-foreground/20"
+              >
+                <Icon size={18} className="text-muted-foreground" aria-hidden="true" />
+                {cat.label}
               </Link>
             );
           })}
@@ -101,7 +91,7 @@ export default async function HomePage() {
       {/* Top Used Deals */}
       {topUsedDeals.length > 0 && (
         <section className="mx-auto max-w-7xl px-4">
-          <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-2">
               <Star size={20} className="text-amber-500" aria-hidden="true" />
               <h2 className="text-xl font-semibold">Mejores ofertas — Usados</h2>
@@ -113,7 +103,7 @@ export default async function HomePage() {
               </a>
             </Button>
           </div>
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
             {topUsedDeals.map((listing) => (
               <ListingCard key={listing.id} listing={listing} />
             ))}
@@ -124,7 +114,7 @@ export default async function HomePage() {
       {/* Top 0km Deals */}
       {topNewDeals.length > 0 && (
         <section className="mx-auto max-w-7xl px-4">
-          <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-2">
               <Sparkles size={20} className="text-blue-500" aria-hidden="true" />
               <h2 className="text-xl font-semibold">Mejores ofertas — 0km</h2>
@@ -136,7 +126,7 @@ export default async function HomePage() {
               </a>
             </Button>
           </div>
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
             {topNewDeals.map((listing) => (
               <ListingCard key={listing.id} listing={listing} />
             ))}
@@ -147,7 +137,7 @@ export default async function HomePage() {
       {/* Recently Added */}
       {recentListings.length > 0 && (
         <section className="mx-auto max-w-7xl px-4">
-          <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-2">
               <TrendingDown size={20} className="text-emerald-500" aria-hidden="true" />
               <h2 className="text-xl font-semibold">Recién publicados</h2>
@@ -159,7 +149,7 @@ export default async function HomePage() {
               </a>
             </Button>
           </div>
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
             {recentListings.map((listing) => (
               <ListingCard key={listing.id} listing={listing} />
             ))}
