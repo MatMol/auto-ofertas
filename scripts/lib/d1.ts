@@ -13,10 +13,26 @@ export function validateEnv(): void {
       "Configure CLOUDFLARE_ACCOUNT_ID, CLOUDFLARE_API_TOKEN and D1_DATABASE_ID",
     );
 }
+export interface D1Statement {
+  sql: string;
+  params: unknown[];
+}
+type D1Response = { result: { results: Record<string, unknown>[] }[] };
 export async function queryD1(
   sql: string,
   params: unknown[] = [],
-): Promise<{ result: { results: Record<string, unknown>[] }[] }> {
+): Promise<D1Response> {
+  return sendD1({ sql, params }, 1);
+}
+export async function batchD1(batch: D1Statement[]): Promise<D1Response> {
+  if (!batch.length) return { result: [] };
+  if (batch.length > 50) throw new Error("D1 batch exceeds 50 statements");
+  return sendD1({ batch }, batch.length);
+}
+async function sendD1(
+  body: D1Statement | { batch: D1Statement[] },
+  expected: number,
+): Promise<D1Response> {
   const response = await fetchWithRetry(
     `https://api.cloudflare.com/client/v4/accounts/${process.env.CLOUDFLARE_ACCOUNT_ID}/d1/database/${process.env.D1_DATABASE_ID}/query`,
     {
@@ -25,18 +41,29 @@ export async function queryD1(
         Authorization: `Bearer ${process.env.CLOUDFLARE_API_TOKEN}`,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ sql, params }),
+      body: JSON.stringify(body),
     },
   );
   const data = (await response.json()) as {
     success: boolean;
-    result: { success?: boolean; results: Record<string, unknown>[] }[];
+    result?: { success?: boolean; results: Record<string, unknown>[] }[];
   };
-  if (!data.success || data.result?.some((r) => r.success === false))
+  if (
+    !data.success ||
+    !Array.isArray(data.result) ||
+    data.result.length !== expected ||
+    data.result.some((r) => r.success !== true)
+  )
     throw new Error(
-      "D1 rejected query; inspect database configuration and migrations",
+      "D1 rejected or returned an incomplete query result; inspect database configuration and migrations",
     );
-  return data;
+  return { result: data.result };
+}
+function progress(label: string, done: number, total: number, started: number) {
+  const elapsed = Math.round((Date.now() - started) / 1000);
+  console.log(
+    `  ${label}: ${done}/${total} (${Math.round((done / total) * 100)}%) — ${elapsed}s`,
+  );
 }
 const columns = [
   "id",
@@ -144,14 +171,18 @@ export function recordCandidates(count: number, excluded: number) {
 }
 export async function insertListings(listings: Listing[]): Promise<number> {
   if (!found) found = listings.length;
-  for (const l of listings) {
-    const q = upsertStatement(l, new Date().toISOString());
-    await queryD1(q.sql, q.params);
-    written++;
+  const started = Date.now();
+  for (let i = 0; i < listings.length; i += 50) {
+    const batch = listings.slice(i, i + 50);
+    const now = new Date().toISOString();
+    await batchD1(batch.map((l) => upsertStatement(l, now)));
+    written += batch.length;
+    progress("Guardados", i + batch.length, listings.length, started);
   }
   return listings.length;
 }
 export async function recalculateAllScores(): Promise<void> {
+  console.log("Leyendo catálogo para recalcular puntajes...");
   const rows: Record<string, unknown>[] = [];
   let after = "";
   while (true) {
@@ -162,23 +193,31 @@ export async function recalculateAllScores(): Promise<void> {
       )
     ).result[0].results;
     rows.push(...page);
+    console.log(`  Leídos: ${rows.length}`);
     if (page.length < 500) break;
     after = String(page.at(-1)!.id);
   }
   const listings = rows.map(rowToListing);
+  console.log(`Calculando puntajes de ${listings.length} avisos...`);
   calculateScores(listings);
-  for (const l of listings)
-    await queryD1(
-      "UPDATE listings SET deal_score=?, score_confidence=?, comparable_count=?, reference_price=? WHERE id=? AND updated_at=?",
-      [
-        l.dealScore,
-        l.scoreConfidence ?? "insufficient",
-        l.comparableCount ?? 0,
-        l.referencePrice ?? null,
-        l.id,
-        l.updatedAt,
-      ],
+  const started = Date.now();
+  for (let i = 0; i < listings.length; i += 50) {
+    const batch = listings.slice(i, i + 50);
+    await batchD1(
+      batch.map((l) => ({
+        sql: "UPDATE listings SET deal_score=?, score_confidence=?, comparable_count=?, reference_price=? WHERE id=? AND updated_at=?",
+        params: [
+          l.dealScore,
+          l.scoreConfidence ?? "insufficient",
+          l.comparableCount ?? 0,
+          l.referencePrice ?? null,
+          l.id,
+          l.updatedAt,
+        ],
+      })),
     );
+    progress("Puntajes procesados", i + batch.length, listings.length, started);
+  }
 }
 export async function updateBrandsModels(): Promise<void> {
   // Read queries derive brands from listings; no destructive cache refresh needed.

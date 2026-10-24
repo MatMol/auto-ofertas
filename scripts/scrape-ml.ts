@@ -298,14 +298,14 @@ async function main() {
     `  Removed ${allListings.length - filtered.length} (${filtered.length} remaining)`,
   );
 
-  console.log("Calculating deal scores...");
+  console.log("Scores will be recalculated after saving listings.");
   // Scores are recalculated against the consolidated database after ingestion.
 
   console.log(`\nWriting ${filtered.length} listings to D1...`);
   const inserted = await insertListings(filtered);
   console.log(`  Inserted/updated: ${inserted}`);
 
-  console.log("Updating brands_models...");
+  console.log("Recalculating consolidated scores...");
   await updateBrandsModels();
 
   console.log(`\nDone! ${inserted} listings in D1.`);

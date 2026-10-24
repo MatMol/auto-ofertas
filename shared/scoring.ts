@@ -33,7 +33,9 @@ export function calculateScores<T extends Scorable>(listings: T[]): void {
       l.isActive === false
     )
       continue;
-    const key = normalizeText(`${l.brand}|${l.model}`);
+    const key = normalizeText(
+      `${l.brand}|${l.model}|${l.version ?? ""}|${l.isNew}`,
+    );
     const group = groups.get(key) ?? [];
     group.push(l);
     groups.set(key, group);
@@ -48,8 +50,7 @@ export function calculateScores<T extends Scorable>(listings: T[]): void {
           (p.duplicateGroup && p.duplicateGroup === l.duplicateGroup) ||
           p.km === null ||
           p.isNew !== l.isNew ||
-          Math.abs(p.year - l.year) > 2 ||
-          normalizeText(p.version ?? "") !== normalizeText(l.version ?? "")
+          Math.abs(p.year - l.year) > 2
         )
           return false;
         if (
