@@ -1,3 +1,8 @@
+import { enrichCandidates } from "./lib/enrich.js";
+import { recordCandidates } from "./lib/d1.js";
+import { fetchWithRetry } from "./lib/http.js";
+import { classifyPrice, parseAmount } from "../shared/quality.js";
+import { runTracked } from "./lib/d1.js";
 /**
  * Kavak Argentina scraper — uses their internal search API.
  * No authentication required. Runs from GitHub Actions.
@@ -16,7 +21,6 @@ import {
   USD_RATE,
   IMPORTED_BRANDS,
 } from "./lib/normalize.js";
-import { calculateScores } from "./lib/scoring.js";
 import { filterSuspiciousListings } from "./lib/filters.js";
 import { validateEnv, insertListings, updateBrandsModels } from "./lib/d1.js";
 
@@ -42,7 +46,9 @@ function parseKm(kmStr: string): number {
   return parseInt(kmStr.replace(/[^\d]/g, ""), 10) || 0;
 }
 
-function kavakCarToListing(car: Record<string, unknown>): Listing | null {
+export function kavakCarToListing(
+  car: Record<string, unknown>,
+): Listing | null {
   const id = String(car.id ?? "");
   if (!id) return null;
 
@@ -56,7 +62,12 @@ function kavakCarToListing(car: Record<string, unknown>): Listing | null {
   if (!price) return null;
 
   const year = Number(car.year) || 0;
-  const km = Number(car.kmNoFormat) || parseKm(String(car.km ?? "0"));
+  const km =
+    car.kmNoFormat != null
+      ? parseAmount(Number(car.kmNoFormat))
+      : car.km != null
+        ? parseAmount(String(car.km))
+        : null;
 
   const rawUrl = String(car.url ?? "");
   const url = rawUrl.startsWith("http")
@@ -65,8 +76,11 @@ function kavakCarToListing(car: Record<string, unknown>): Listing | null {
 
   const transmission = String(car.transmission ?? "").toLowerCase();
   const transmissionNorm =
-    transmission.includes("auto") || transmission.includes("automát") ? "automatica" :
-    transmission.includes("manual") ? "manual" : null;
+    transmission.includes("auto") || transmission.includes("automát")
+      ? "automatica"
+      : transmission.includes("manual")
+        ? "manual"
+        : null;
 
   const regionName = String(car.regionName ?? "");
   const location = regionName || "Buenos Aires";
@@ -89,8 +103,9 @@ function kavakCarToListing(car: Record<string, unknown>): Listing | null {
     model,
     version,
     year,
-    isNew: km === 0,
+    isNew: false, // Kavak used inventory; zero mileage alone is not new.
     price,
+    priceKind: classifyPrice(priceStr, price),
     currency: isUsd ? "USD" : "ARS",
     priceArs,
     priceUsd,
@@ -104,7 +119,7 @@ function kavakCarToListing(car: Record<string, unknown>): Listing | null {
     province: "Buenos Aires",
     imageUrls,
     sellerType: "concesionaria",
-    verificationBadge: "kavak_verified",
+    verificationBadge: null,
     acceptsSwap: true,
     hasFinancing: true,
     dealScore: 0,
@@ -130,11 +145,7 @@ async function main() {
     process.stdout.write(`  Page ${page + 1}...`);
 
     try {
-      const res = await fetch(url, { headers: HEADERS });
-      if (!res.ok) {
-        console.log(` HTTP ${res.status}`);
-        break;
-      }
+      const res = await fetchWithRetry(url, { headers: HEADERS });
 
       const data = (await res.json()) as {
         cars?: Record<string, unknown>[];
@@ -155,11 +166,13 @@ async function main() {
         }
       }
 
-      console.log(` ${added} new (${allListings.length} total, ${totalPages} pages)`);
+      console.log(
+        ` ${added} new (${allListings.length} total, ${totalPages} pages)`,
+      );
       if (cars.length === 0) break;
     } catch (err) {
       console.log(` error: ${err}`);
-      break;
+      throw err;
     }
 
     page++;
@@ -168,7 +181,7 @@ async function main() {
 
   if (allListings.length === 0) {
     console.log("\nNo listings scraped from Kavak.");
-    process.exit(0);
+    throw new Error("No listings scraped");
   }
 
   console.log(`\nTotal raw listings: ${allListings.length}`);
@@ -177,12 +190,14 @@ async function main() {
 
   console.log("Filtering suspicious listings...");
   const filtered = filterSuspiciousListings(allListings);
+  recordCandidates(allListings.length, allListings.length - filtered.length);
+  await enrichCandidates(filtered);
   console.log(
-    `  Removed ${allListings.length - filtered.length} (${filtered.length} remaining)`
+    `  Removed ${allListings.length - filtered.length} (${filtered.length} remaining)`,
   );
 
   console.log("Calculating deal scores...");
-  calculateScores(filtered);
+  // Scores are recalculated against the consolidated database after ingestion.
 
   console.log(`\nWriting ${filtered.length} listings to D1...`);
   const inserted = await insertListings(filtered);
@@ -194,7 +209,8 @@ async function main() {
   console.log(`\nDone! Kavak: ${inserted} listings in D1.`);
 }
 
-main().catch((err) => {
-  console.error("Fatal error:", err);
-  process.exit(1);
-});
+if (process.argv[1]?.endsWith("scrape-kavak.ts"))
+  runTracked("kavak", main).catch((err) => {
+    console.error("Fatal error:", err);
+    process.exit(1);
+  });

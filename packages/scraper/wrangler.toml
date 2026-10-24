@@ -1,18 +1,10 @@
 name = "auto-ofertas-scraper"
 main = "src/worker.ts"
 compatibility_date = "2025-01-01"
-
 [triggers]
-crons = [
-  "0 */2 * * *",   # Every 2 hours: ingest
-  "0 */6 * * *",   # Every 6 hours: scoring
-  "0 3 * * *",     # Daily at 3 AM: cleanup
-]
-
+crons = ["0 */6 * * *"]
 [[d1_databases]]
 binding = "DB"
 database_name = "auto-ofertas-db"
 database_id = "d73539a8-fc35-4d9c-b947-41c115fbbf60"
-
-[vars]
-USD_RATE = "1180"
+# Ingestion uses scripts/ only. Set RUN_TOKEN with wrangler secret put.

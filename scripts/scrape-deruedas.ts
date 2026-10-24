@@ -1,3 +1,8 @@
+import { enrichCandidates } from "./lib/enrich.js";
+import { recordCandidates } from "./lib/d1.js";
+import { fetchWithRetry } from "./lib/http.js";
+import { classifyPrice, parseAmount } from "../shared/quality.js";
+import { runTracked } from "./lib/d1.js";
 /**
  * deRuedas Argentina scraper — HTML scraping with Cheerio.
  * Server-rendered ASP pages with divCar containers. Runs from GitHub Actions.
@@ -13,12 +18,12 @@ import * as cheerio from "cheerio";
 import type { Listing } from "./lib/types.js";
 import {
   fixBrand,
+  parseTitle,
   fixProvince,
   inferAttributes,
   USD_RATE,
   IMPORTED_BRANDS,
 } from "./lib/normalize.js";
-import { calculateScores } from "./lib/scoring.js";
 import { filterSuspiciousListings } from "./lib/filters.js";
 import { validateEnv, insertListings, updateBrandsModels } from "./lib/d1.js";
 
@@ -30,7 +35,7 @@ const UA =
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-function parseListingsFromHtml(html: string): Listing[] {
+export function parseListingsFromHtml(html: string): Listing[] {
   const $ = cheerio.load(html);
   const listings: Listing[] = [];
   const now = new Date().toISOString();
@@ -48,14 +53,10 @@ function parseListingsFromHtml(html: string): Listing[] {
       if (!codMatch) return;
       const sourceId = codMatch[1];
 
-      const fullUrl = href.startsWith("http")
-        ? href
-        : `${BASE_URL}${href}`;
+      const fullUrl = href.startsWith("http") ? href : `${BASE_URL}${href}`;
 
       const h2 = titleLink.find("h2").text().trim();
-      const parts = h2.split(/\s+/);
-      const brand = fixBrand(parts[0] ?? "");
-      const model = parts.slice(1).join(" ");
+      const { brand, model } = parseTitle(h2);
 
       const versionSpan = titleLink
         .find("span[style*='font-weight:normal']")
@@ -70,8 +71,7 @@ function parseListingsFromHtml(html: string): Listing[] {
         .text()
         .trim();
       const isUsd = priceSpan.includes("U$") || priceSpan.includes("u$");
-      const priceNum =
-        parseInt(priceSpan.replace(/[^\d]/g, ""), 10) || 0;
+      const priceNum = parseInt(priceSpan.replace(/[^\d]/g, ""), 10) || 0;
       if (!priceNum) return;
 
       const infoSpan = card
@@ -86,7 +86,7 @@ function parseListingsFromHtml(html: string): Listing[] {
 
       const fuelTypes = ["Diesel", "GNC", "Nafta", "Eléctrico", "Híbrido"];
       const fuelMatch = fuelTypes.find((f) =>
-        infoSpan.toLowerCase().includes(f.toLowerCase())
+        infoSpan.toLowerCase().includes(f.toLowerCase()),
       );
       const fuelType = fuelMatch
         ? fuelMatch.toLowerCase() === "eléctrico"
@@ -106,9 +106,7 @@ function parseListingsFromHtml(html: string): Listing[] {
         .trim();
 
       const kmMatch = detailText.match(/([\d.]+)\s*[Kk][Mm]/);
-      const km = kmMatch
-        ? parseInt(kmMatch[1].replace(/\./g, ""), 10)
-        : 0;
+      const km = kmMatch ? parseInt(kmMatch[1].replace(/\./g, ""), 10) : null;
 
       const locationRaw = detailText
         .replace(/[\d.]+\s*[Kk][Mm]/, "")
@@ -116,17 +114,17 @@ function parseListingsFromHtml(html: string): Listing[] {
         .trim();
       const province = fixProvince(locationRaw);
 
-      const hasFinancing = card
-        .text()
-        .toLowerCase()
-        .includes("cuota");
+      const hasFinancing = card.text().toLowerCase().includes("cuota");
 
       const pathParts = href.split("/");
       const condIdx = pathParts.indexOf("Usados");
       const urlProvince =
         condIdx >= 0
           ? fixProvince(
-              decodeURIComponent(pathParts[condIdx + 1] ?? "").replace(/-/g, " ")
+              decodeURIComponent(pathParts[condIdx + 1] ?? "").replace(
+                /-/g,
+                " ",
+              ),
             )
           : province;
 
@@ -144,8 +142,9 @@ function parseListingsFromHtml(html: string): Listing[] {
         model,
         version,
         year,
-        isNew: km === 0 && year >= new Date().getFullYear(),
+        isNew: false, // This endpoint explicitly lists used vehicles.
         price: priceNum,
+        priceKind: classifyPrice(priceSpan, priceNum),
         currency: isUsd ? "USD" : "ARS",
         priceArs,
         priceUsd,
@@ -183,17 +182,13 @@ async function main() {
 
   const allListings: Listing[] = [];
   const seenIds = new Set<string>();
-  const MAX_CONSECUTIVE_FAILURES = 3;
-  let consecutiveFailures = 0;
 
   for (let page = 1; page <= MAX_PAGES; page++) {
     const url = `${BASE_URL}/bus.asp?condicion=Usados&segmento=0&pagina=${page}`;
     process.stdout.write(`  Page ${page}/${MAX_PAGES}...`);
 
     try {
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 30000);
-      const res = await fetch(url, {
+      const res = await fetchWithRetry(url, {
         headers: {
           "User-Agent": UA,
           Accept:
@@ -204,20 +199,7 @@ async function main() {
           "Sec-Fetch-Mode": "navigate",
           "Sec-Fetch-Site": "none",
         },
-        signal: controller.signal,
       });
-      clearTimeout(timeout);
-      if (!res.ok) {
-        console.log(` HTTP ${res.status}`);
-        consecutiveFailures++;
-        if (consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
-          console.log(
-            `  ${MAX_CONSECUTIVE_FAILURES} consecutive failures — site may be unreachable, stopping.`
-          );
-          break;
-        }
-        continue;
-      }
 
       const html = await res.text();
       const pageListings = parseListingsFromHtml(html);
@@ -231,27 +213,13 @@ async function main() {
         }
       }
 
-      consecutiveFailures = 0;
       console.log(` ${added} new (${allListings.length} total)`);
-      if (added === 0 && page > 1) {
+      if (pageListings.length === 0 && page > 1) {
         console.log("  No more results");
         break;
       }
     } catch (err) {
-      const isTimeout =
-        err instanceof Error && err.name === "AbortError";
-      console.log(
-        isTimeout
-          ? " timeout (30s) — site not responding"
-          : ` error: ${err}`
-      );
-      consecutiveFailures++;
-      if (consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
-        console.log(
-          `  ${MAX_CONSECUTIVE_FAILURES} consecutive failures — site may be unreachable, stopping.`
-        );
-        break;
-      }
+      throw new Error(`Incomplete crawl at page ${page}: ${String(err)}`);
     }
 
     if (page < MAX_PAGES) await sleep(DELAY_MS);
@@ -259,7 +227,7 @@ async function main() {
 
   if (allListings.length === 0) {
     console.log("\nNo listings scraped from deRuedas.");
-    process.exit(0);
+    throw new Error("No listings scraped");
   }
 
   console.log(`\nTotal raw listings: ${allListings.length}`);
@@ -268,12 +236,14 @@ async function main() {
 
   console.log("Filtering suspicious listings...");
   const filtered = filterSuspiciousListings(allListings);
+  recordCandidates(allListings.length, allListings.length - filtered.length);
+  await enrichCandidates(filtered);
   console.log(
-    `  Removed ${allListings.length - filtered.length} (${filtered.length} remaining)`
+    `  Removed ${allListings.length - filtered.length} (${filtered.length} remaining)`,
   );
 
   console.log("Calculating deal scores...");
-  calculateScores(filtered);
+  // Scores are recalculated against the consolidated database after ingestion.
 
   console.log(`\nWriting ${filtered.length} listings to D1...`);
   const inserted = await insertListings(filtered);
@@ -285,7 +255,8 @@ async function main() {
   console.log(`\nDone! deRuedas: ${inserted} listings in D1.`);
 }
 
-main().catch((err) => {
-  console.error("Fatal error:", err);
-  process.exit(1);
-});
+if (process.argv[1]?.endsWith("scrape-deruedas.ts"))
+  runTracked("deruedas", main).catch((err) => {
+    console.error("Fatal error:", err);
+    process.exit(1);
+  });

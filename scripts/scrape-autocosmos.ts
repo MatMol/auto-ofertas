@@ -1,3 +1,8 @@
+import { enrichCandidates } from "./lib/enrich.js";
+import { recordCandidates } from "./lib/d1.js";
+import { fetchWithRetry } from "./lib/http.js";
+import { classifyPrice, parseAmount } from "../shared/quality.js";
+import { runTracked } from "./lib/d1.js";
 /**
  * Autocosmos Argentina scraper — HTML scraping with Cheerio.
  * Uses structured listing-card elements with schema.org microdata.
@@ -19,7 +24,6 @@ import {
   USD_RATE,
   IMPORTED_BRANDS,
 } from "./lib/normalize.js";
-import { calculateScores } from "./lib/scoring.js";
 import { filterSuspiciousListings } from "./lib/filters.js";
 import { validateEnv, insertListings, updateBrandsModels } from "./lib/d1.js";
 
@@ -34,7 +38,7 @@ const UA =
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-function parseListingsFromHtml(html: string): Listing[] {
+export function parseListingsFromHtml(html: string): Listing[] {
   const $ = cheerio.load(html);
   const listings: Listing[] = [];
   const now = new Date().toISOString();
@@ -72,16 +76,14 @@ function parseListingsFromHtml(html: string): Listing[] {
       const finalModel = modelEl.length ? modelEl.text().trim() : model;
 
       const versionEl = card.find(".listing-card__version");
-      const finalVersion = versionEl.length
-        ? versionEl.text().trim()
-        : version;
+      const finalVersion = versionEl.length ? versionEl.text().trim() : version;
 
       const yearEl = card.find(".listing-card__year");
       const year = yearEl.length ? parseInt(yearEl.text().trim(), 10) || 0 : 0;
 
       const kmEl = card.find(".listing-card__km");
       const kmText = kmEl.length ? kmEl.text().trim() : "";
-      const km = parseInt(kmText.replace(/[^\d]/g, ""), 10) || 0;
+      const km = kmText ? parseAmount(kmText) : null;
 
       const currencyMeta = card.find("meta[itemprop='priceCurrency']");
       const currencyRaw = currencyMeta.attr("content") ?? "ARS";
@@ -98,8 +100,7 @@ function parseListingsFromHtml(html: string): Listing[] {
       const priceContent = (priceEl.attr("content") ?? priceMetaContent).trim();
       const priceText = priceEl.length ? priceEl.text().trim() : "";
       // Remover puntos/espacios (formato AR: "20.000.000" o "20 000 000")
-      const digitsFromContent = priceContent.replace(/[^\d]/g, "");
-      let price = digitsFromContent ? parseInt(digitsFromContent, 10) || 0 : 0;
+      let price = parseAmount(priceContent, true) ?? 0;
       if (!price && priceText) {
         const digitsOnly = priceText.replace(/[^\d]/g, "");
         // Evitar capturar "200" de "200 tsi" — precios reales tienen al menos 5 dígitos (ej. 20000)
@@ -126,8 +127,7 @@ function parseListingsFromHtml(html: string): Listing[] {
       const location = city ? `${city}, ${province}` : province;
 
       const imgEl = card.find("img[itemprop='image']");
-      const imgSrc =
-        imgEl.attr("content") ?? imgEl.attr("src") ?? "";
+      const imgSrc = imgEl.attr("content") ?? imgEl.attr("src") ?? "";
       const imageUrls = imgSrc ? [imgSrc] : [];
 
       listings.push({
@@ -139,8 +139,12 @@ function parseListingsFromHtml(html: string): Listing[] {
         model: finalModel,
         version: finalVersion,
         year,
-        isNew: km === 0 && year >= new Date().getFullYear(),
+        isNew: false, // This endpoint explicitly lists used vehicles.
         price,
+        priceKind: classifyPrice(
+          `${priceTitle} ${link.attr("title") ?? ""}`,
+          price,
+        ),
         currency: isUsd ? "USD" : "ARS",
         priceArs,
         priceUsd,
@@ -178,8 +182,6 @@ async function main() {
 
   const allListings: Listing[] = [];
   const seenIds = new Set<string>();
-  const MAX_CONSECUTIVE_FAILURES = 3;
-  let consecutiveFailures = 0;
 
   for (let page = 1; page <= MAX_PAGES; page++) {
     const url =
@@ -189,9 +191,7 @@ async function main() {
     process.stdout.write(`  Page ${page}/${MAX_PAGES}...`);
 
     try {
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 30000);
-      const res = await fetch(url, {
+      const res = await fetchWithRetry(url, {
         headers: {
           "User-Agent": UA,
           Accept:
@@ -202,20 +202,7 @@ async function main() {
           "Sec-Fetch-Mode": "navigate",
           "Sec-Fetch-Site": "none",
         },
-        signal: controller.signal,
       });
-      clearTimeout(timeout);
-      if (!res.ok) {
-        console.log(` HTTP ${res.status}`);
-        consecutiveFailures++;
-        if (consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
-          console.log(
-            `  ${MAX_CONSECUTIVE_FAILURES} consecutive failures — site may be unreachable, stopping.`
-          );
-          break;
-        }
-        continue;
-      }
 
       const html = await res.text();
       const pageListings = parseListingsFromHtml(html);
@@ -229,27 +216,13 @@ async function main() {
         }
       }
 
-      consecutiveFailures = 0;
       console.log(` ${added} new (${allListings.length} total)`);
-      if (added === 0 && page > 1) {
+      if (pageListings.length === 0 && page > 1) {
         console.log("  No more results");
         break;
       }
     } catch (err) {
-      const isTimeout =
-        err instanceof Error && err.name === "AbortError";
-      console.log(
-        isTimeout
-          ? " timeout (30s) — site not responding"
-          : ` error: ${err}`
-      );
-      consecutiveFailures++;
-      if (consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
-        console.log(
-          `  ${MAX_CONSECUTIVE_FAILURES} consecutive failures — site may be unreachable, stopping.`
-        );
-        break;
-      }
+      throw new Error(`Incomplete crawl at page ${page}: ${String(err)}`);
     }
 
     if (page < MAX_PAGES) await sleep(DELAY_MS);
@@ -257,7 +230,7 @@ async function main() {
 
   if (allListings.length === 0) {
     console.log("\nNo listings scraped from Autocosmos.");
-    process.exit(0);
+    throw new Error("No listings scraped");
   }
 
   console.log(`\nTotal raw listings: ${allListings.length}`);
@@ -266,12 +239,14 @@ async function main() {
 
   console.log("Filtering suspicious listings...");
   const filtered = filterSuspiciousListings(allListings);
+  recordCandidates(allListings.length, allListings.length - filtered.length);
+  await enrichCandidates(filtered);
   console.log(
-    `  Removed ${allListings.length - filtered.length} (${filtered.length} remaining)`
+    `  Removed ${allListings.length - filtered.length} (${filtered.length} remaining)`,
   );
 
   console.log("Calculating deal scores...");
-  calculateScores(filtered);
+  // Scores are recalculated against the consolidated database after ingestion.
 
   console.log(`\nWriting ${filtered.length} listings to D1...`);
   const inserted = await insertListings(filtered);
@@ -283,7 +258,8 @@ async function main() {
   console.log(`\nDone! Autocosmos: ${inserted} listings in D1.`);
 }
 
-main().catch((err) => {
-  console.error("Fatal error:", err);
-  process.exit(1);
-});
+if (process.argv[1]?.endsWith("scrape-autocosmos.ts"))
+  runTracked("autocosmos", main).catch((err) => {
+    console.error("Fatal error:", err);
+    process.exit(1);
+  });

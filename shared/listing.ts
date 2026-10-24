@@ -1,0 +1,35 @@
+import type { QualityFields } from "./quality";
+export interface ListingRecord extends QualityFields {
+  id: string;
+  source: string;
+  sourceId: string;
+  sourceUrl: string;
+  brand: string;
+  model: string;
+  version: string | null;
+  year: number;
+  isNew: boolean;
+  price: number;
+  currency: "ARS" | "USD";
+  priceArs: number;
+  priceUsd: number | null;
+  km: number | null;
+  fuelType: string | null;
+  transmission: string | null;
+  bodyType: string | null;
+  doors: number | null;
+  isImported: boolean;
+  location: string;
+  province: string;
+  imageUrls: string[];
+  sellerType: "particular" | "concesionaria";
+  verificationBadge: string | null;
+  acceptsSwap: boolean;
+  hasFinancing: boolean;
+  dealScore: number;
+  consumption: number | null;
+  tankCapacity: number | null;
+  createdAt: string;
+  updatedAt: string;
+  isActive: boolean;
+}

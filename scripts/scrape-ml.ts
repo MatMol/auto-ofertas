@@ -1,3 +1,8 @@
+import { enrichCandidates } from "./lib/enrich.js";
+import { recordCandidates } from "./lib/d1.js";
+import { fetchWithRetry } from "./lib/http.js";
+import { classifyPrice, parseAmount } from "../shared/quality.js";
+import { runTracked } from "./lib/d1.js";
 /**
  * MercadoLibre scraper — runs from a residential IP (Windows/Mac).
  *
@@ -12,17 +17,9 @@
 
 import "./lib/env.js";
 import type { Listing, PolycardData } from "./lib/types.js";
-import {
-  inferAttributes,
-  polycardToListing,
-} from "./lib/normalize.js";
-import { calculateScores } from "./lib/scoring.js";
+import { inferAttributes, polycardToListing } from "./lib/normalize.js";
 import { filterSuspiciousListings } from "./lib/filters.js";
-import {
-  validateEnv,
-  insertListings,
-  updateBrandsModels,
-} from "./lib/d1.js";
+import { validateEnv, insertListings, updateBrandsModels } from "./lib/d1.js";
 
 const MAX_PAGES_PER_SEARCH = 42;
 const PAGE_DELAY_MIN = 2500;
@@ -65,7 +62,10 @@ const BRAND_SEARCHES: { label: string; url: string }[] = [
   { label: "Hyundai", url: "https://autos.mercadolibre.com.ar/hyundai/" },
   { label: "Kia", url: "https://autos.mercadolibre.com.ar/kia/" },
   { label: "BMW", url: "https://autos.mercadolibre.com.ar/bmw/" },
-  { label: "Mercedes-Benz", url: "https://autos.mercadolibre.com.ar/mercedes-benz/" },
+  {
+    label: "Mercedes-Benz",
+    url: "https://autos.mercadolibre.com.ar/mercedes-benz/",
+  },
   { label: "Audi", url: "https://autos.mercadolibre.com.ar/audi/" },
   { label: "Jeep", url: "https://autos.mercadolibre.com.ar/jeep/" },
   { label: "RAM", url: "https://autos.mercadolibre.com.ar/ram/" },
@@ -97,9 +97,18 @@ function extractJsonObject(str: string, startIdx: number): string | null {
 
   for (let i = startIdx; i < str.length; i++) {
     const ch = str[i];
-    if (escape) { escape = false; continue; }
-    if (ch === "\\") { escape = true; continue; }
-    if (ch === '"') { inString = !inString; continue; }
+    if (escape) {
+      escape = false;
+      continue;
+    }
+    if (ch === "\\") {
+      escape = true;
+      continue;
+    }
+    if (ch === '"') {
+      inString = !inString;
+      continue;
+    }
     if (inString) continue;
     if (ch === "{") depth++;
     else if (ch === "}") {
@@ -139,7 +148,9 @@ function extractPolycards(html: string): PolycardData[] {
                 components: data.components,
               });
             }
-          } catch { /* skip malformed JSON */ }
+          } catch {
+            /* skip malformed JSON */
+          }
           searchFrom = start + (jsonStr?.length ?? 1);
         } else {
           searchFrom = start + 1;
@@ -158,7 +169,7 @@ function extractPolycards(html: string): PolycardData[] {
 async function scrapeSearch(
   baseUrl: string,
   label: string,
-  seenIds: Set<string>
+  seenIds: Set<string>,
 ): Promise<{ listings: Listing[]; blocked: boolean }> {
   const listings: Listing[] = [];
   let emptyPages = 0;
@@ -169,14 +180,15 @@ async function scrapeSearch(
     const separator = baseUrl.includes("?") ? "&" : "_";
     const url = `${baseUrl}${separator}Desde_${offset + 1}_NoIndex_true`;
     process.stdout.write(
-      `  [${label}] Page ${page + 1}/${MAX_PAGES_PER_SEARCH} (offset ${offset})...`
+      `  [${label}] Page ${page + 1}/${MAX_PAGES_PER_SEARCH} (offset ${offset})...`,
     );
 
     try {
-      const res = await fetch(url, {
+      const res = await fetchWithRetry(url, {
         headers: {
           "User-Agent": randomUA(),
-          Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+          Accept:
+            "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
           "Accept-Language": "es-AR,es;q=0.9,en;q=0.8",
           "Cache-Control": "no-cache",
           Pragma: "no-cache",
@@ -186,17 +198,6 @@ async function scrapeSearch(
         },
         redirect: "follow",
       });
-
-      if (!res.ok) {
-        console.log(` HTTP ${res.status}`);
-        if (res.status === 429) {
-          console.log(`  Rate limited! Waiting ${BLOCKED_WAIT / 1000}s...`);
-          await sleep(BLOCKED_WAIT);
-          emptyPages = 0;
-          continue;
-        }
-        break;
-      }
 
       const html = await res.text();
       const polycards = extractPolycards(html);
@@ -228,7 +229,7 @@ async function scrapeSearch(
         emptyPages = 0;
       }
     } catch (err) {
-      console.log(` error: ${err}`);
+      throw err;
     }
 
     if (page < MAX_PAGES_PER_SEARCH - 1) {
@@ -248,47 +249,41 @@ async function main() {
   const allListings: Listing[] = [];
   const seenIds = new Set<string>();
 
-  let consecutiveBlocks = 0;
+  const targets = (process.env.TARGET_BRANDS || "")
+    .toLowerCase()
+    .split(",")
+    .filter(Boolean);
+  const searches = targets.length
+    ? BRAND_SEARCHES.filter((s) => targets.includes(s.label.toLowerCase()))
+    : BRAND_SEARCHES;
+  if (!searches.length)
+    throw new Error("No configured brand searches match TARGET_BRANDS");
 
-  for (let i = 0; i < BRAND_SEARCHES.length; i++) {
-    const search = BRAND_SEARCHES[i];
-    console.log(`\n[${i + 1}/${BRAND_SEARCHES.length}] Scraping: ${search.label}`);
+  for (let i = 0; i < searches.length; i++) {
+    const search = searches[i];
+    console.log(`\n[${i + 1}/${searches.length}] Scraping: ${search.label}`);
 
     const { listings: brandListings, blocked } = await scrapeSearch(
       search.url,
       search.label,
-      seenIds
+      seenIds,
     );
     allListings.push(...brandListings);
     console.log(
-      `  ${search.label}: ${brandListings.length} listings (${allListings.length} total)`
+      `  ${search.label}: ${brandListings.length} listings (${allListings.length} total)`,
     );
 
-    if (blocked) {
-      consecutiveBlocks++;
-      if (consecutiveBlocks >= 3) {
-        console.log(
-          `\n  Blocked ${consecutiveBlocks} times in a row. Waiting ${BLOCKED_WAIT * 2 / 1000}s before continuing...`
-        );
-        await sleep(BLOCKED_WAIT * 2);
-        consecutiveBlocks = 0;
-      } else {
-        console.log(`  Blocked — cooling down ${BLOCKED_WAIT / 1000}s...`);
-        await sleep(BLOCKED_WAIT);
-      }
-    } else {
-      consecutiveBlocks = 0;
-      if (i < BRAND_SEARCHES.length - 1) {
-        const cooldown = randomDelay(BRAND_COOLDOWN_MIN, BRAND_COOLDOWN_MAX);
-        console.log(`  Cooling down ${(cooldown / 1000).toFixed(0)}s before next brand...`);
-        await sleep(cooldown);
-      }
-    }
+    if (blocked)
+      throw new Error(
+        `Empty first page for ${search.label}; check source before continuing`,
+      );
+    if (i < searches.length - 1)
+      await sleep(randomDelay(BRAND_COOLDOWN_MIN, BRAND_COOLDOWN_MAX));
   }
 
   if (allListings.length === 0) {
     console.log("\nNo listings scraped.");
-    process.exit(1);
+    throw new Error("No listings scraped");
   }
 
   console.log(`\nTotal raw listings: ${allListings.length}`);
@@ -297,12 +292,14 @@ async function main() {
 
   console.log("Filtering suspicious listings...");
   const filtered = filterSuspiciousListings(allListings);
+  recordCandidates(allListings.length, allListings.length - filtered.length);
+  await enrichCandidates(filtered);
   console.log(
-    `  Removed ${allListings.length - filtered.length} (${filtered.length} remaining)`
+    `  Removed ${allListings.length - filtered.length} (${filtered.length} remaining)`,
   );
 
   console.log("Calculating deal scores...");
-  calculateScores(filtered);
+  // Scores are recalculated against the consolidated database after ingestion.
 
   console.log(`\nWriting ${filtered.length} listings to D1...`);
   const inserted = await insertListings(filtered);
@@ -314,7 +311,8 @@ async function main() {
   console.log(`\nDone! ${inserted} listings in D1.`);
 }
 
-main().catch((err) => {
-  console.error("Fatal error:", err);
-  process.exit(1);
-});
+if (process.argv[1]?.endsWith("scrape-ml.ts"))
+  runTracked("mercadolibre", main).catch((err) => {
+    console.error("Fatal error:", err);
+    process.exit(1);
+  });
