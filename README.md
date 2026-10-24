@@ -23,7 +23,7 @@ El workflow `check.yml` ejecuta los mismos chequeos. El build puede requerir red
 
 ## Configuración de scraping
 
-Crear `.env` en la raíz (ignorado por Git) con:
+Crear `.env.scraper` en la raíz (ignorado por Git) con:
 
 ```dotenv
 CLOUDFLARE_ACCOUNT_ID=...
@@ -40,6 +40,8 @@ ENRICH_LIMIT=10
 SCRAPE_CACHE_DIR=.cache/scraping
 SCRAPE_CACHE_MINUTES=60
 ```
+
+Las credenciales del scraper se guardan en `.env.scraper` para que OpenNext no las cargue durante el deploy. Si usabas `.env` exclusivamente para scraping, renombralo a `.env.scraper`. En GitHub Actions se siguen usando las variables de entorno de los workflows.
 
 `USD_RATE` debe ser una cotización positiva elegida por vos; no se descarga ni se inventa un valor. La fecha se registra con la conversión. Configurar también `USD_RATE` y `USD_RATE_DATE` en las variables de GitHub Actions. `TARGET_BRANDS` acota las búsquedas de MercadoLibre antes de descargar; el resto de criterios filtra los candidatos antes de persistir/enriquecer. En las otras fuentes el filtrado es posterior al descubrimiento.
 

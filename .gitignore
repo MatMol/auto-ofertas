@@ -44,4 +44,4 @@ web/src/lib/db/seed-data.json
 
 .cache/
 
-!.env.example
+!.env.scraper.example
