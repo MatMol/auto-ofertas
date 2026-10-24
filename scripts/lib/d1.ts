@@ -233,6 +233,9 @@ export async function runTracked(
     Number(process.env.USD_RATE) <= 0
   )
     throw new Error("Configure a positive USD_RATE before scraping");
+  written = 0;
+  found = 0;
+  rejected = 0;
   const id = crypto.randomUUID();
   await queryD1(
     "INSERT INTO scrape_runs(id,source,started_at,status) VALUES(?,?,?,'running')",
@@ -249,17 +252,21 @@ export async function runTracked(
       [new Date().toISOString(), found, written, rejected, id],
     );
   } catch (error) {
-    await queryD1(
-      "UPDATE scrape_runs SET status='failed', finished_at=?, found=?, written=?, rejected=?, error=? WHERE id=?",
-      [
-        new Date().toISOString(),
-        found,
-        written,
-        rejected,
-        String(error).slice(0, 500),
-        id,
-      ],
-    );
+    try {
+      await queryD1(
+        "UPDATE scrape_runs SET status='failed', finished_at=?, found=?, written=?, rejected=?, error=? WHERE id=?",
+        [
+          new Date().toISOString(),
+          found,
+          written,
+          rejected,
+          String(error).slice(0, 500),
+          id,
+        ],
+      );
+    } catch (trackingError) {
+      console.warn(`Could not record failed run: ${String(trackingError)}`);
+    }
     throw error;
   }
 }

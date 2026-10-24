@@ -1,6 +1,48 @@
 import { createHash } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+export class HttpError extends Error {
+  constructor(
+    public readonly status: number,
+    host: string,
+    detail = "",
+  ) {
+    super(`HTTP ${status}: ${host}${detail ? ` — ${detail}` : ""}`);
+    this.name = "HttpError";
+  }
+}
+async function httpError(response: Response, url: string): Promise<HttpError> {
+  const host = new URL(url).hostname;
+  let detail = "";
+  // Only parse structured errors from Cloudflare; never log arbitrary page bodies.
+  if (host === "api.cloudflare.com") {
+    try {
+      const data = (await response.json()) as {
+        errors?: { code?: number; message?: string }[];
+      };
+      if (Array.isArray(data.errors)) {
+        detail = data.errors
+          .map(
+            (e) =>
+              `${e.code ?? "D1"}: ${String(e.message ?? "Request rejected")}`,
+          )
+          .join("; ");
+        for (const key of [
+          "CLOUDFLARE_API_TOKEN",
+          "CLOUDFLARE_ACCOUNT_ID",
+          "D1_DATABASE_ID",
+        ]) {
+          const secret = process.env[key];
+          if (secret) detail = detail.split(secret).join("[redacted]");
+        }
+        detail = detail.slice(0, 1000);
+      }
+    } catch {
+      /* Retain HTTP status if the response is not JSON. */
+    }
+  }
+  return new HttpError(response.status, host, detail);
+}
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 /** Bounded retries of the SAME request. Optional disk cache resumes an interrupted read-only crawl. */
 export async function fetchWithRetry(
@@ -53,8 +95,7 @@ export async function fetchWithRetry(
         );
         continue;
       }
-      if (!response.ok)
-        throw new Error(`HTTP ${response.status}: ${new URL(url).hostname}`);
+      if (!response.ok) throw await httpError(response, url);
       if (cacheable) {
         await mkdir(cacheDir!, { recursive: true });
         await writeFile(
