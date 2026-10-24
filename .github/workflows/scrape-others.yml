@@ -3,8 +3,12 @@ name: Scrape other sites (deRuedas, Autocosmos)
 # Kavak also blocks cloud IPs — run it from residential IP alongside ML.
 on:
   schedule:
-    - cron: '0 10 * * *'
+    - cron: "0 10 * * *"
   workflow_dispatch: {}
+
+concurrency:
+  group: autoofertas-ingestion
+  cancel-in-progress: false
 
 jobs:
   scrape-deruedas:
@@ -18,20 +22,24 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: pnpm
 
       - name: Install dependencies
-        run: pnpm install
+        run: pnpm install --frozen-lockfile
 
       - name: Scrape deRuedas
         run: pnpm scrape:deruedas
         env:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          USD_RATE: ${{ vars.USD_RATE }}
+          USD_RATE_DATE: ${{ vars.USD_RATE_DATE }}
           D1_DATABASE_ID: ${{ secrets.D1_DATABASE_ID }}
 
   scrape-autocosmos:
+    needs: scrape-deruedas
+    if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
@@ -42,15 +50,17 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: pnpm
 
       - name: Install dependencies
-        run: pnpm install
+        run: pnpm install --frozen-lockfile
 
       - name: Scrape Autocosmos
         run: pnpm scrape:autocosmos
         env:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          USD_RATE: ${{ vars.USD_RATE }}
+          USD_RATE_DATE: ${{ vars.USD_RATE_DATE }}
           D1_DATABASE_ID: ${{ secrets.D1_DATABASE_ID }}

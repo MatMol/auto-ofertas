@@ -41,3 +41,7 @@ web/src/lib/db/seed-data.json
 # IDE
 .idea/
 .vscode/
+
+.cache/
+
+!.env.example

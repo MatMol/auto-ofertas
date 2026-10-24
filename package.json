@@ -7,18 +7,24 @@
     "dev": "pnpm --filter web dev",
     "build": "pnpm --filter web build",
     "lint": "pnpm --filter web lint",
-    "seed": "pnpm --filter web seed",
+    "seed": "tsx scripts/seed-local.ts",
     "scrape:ml": "tsx scripts/scrape-ml.ts",
     "scrape:kavak": "tsx scripts/scrape-kavak.ts",
     "scrape:deruedas": "tsx scripts/scrape-deruedas.ts",
     "scrape:autocosmos": "tsx scripts/scrape-autocosmos.ts",
     "scrape:others": "tsx scripts/scrape-others.ts",
     "scrape:all": "tsx scripts/scrape-all.ts",
-    "cleanup": "tsx scripts/cleanup.ts"
+    "cleanup": "tsx scripts/cleanup.ts",
+    "test": "node --import tsx --test tests/*.test.ts && python3 tests/migrations.py",
+    "typecheck": "pnpm --filter web exec tsc --noEmit --incremental false && pnpm --filter @auto-ofertas/scraper build && tsc -p scripts/tsconfig.json",
+    "repair": "tsx scripts/repair.ts",
+    "check": "pnpm lint && pnpm typecheck && pnpm test",
+    "recheck": "tsx scripts/recheck.ts"
   },
   "devDependencies": {
     "cheerio": "^1.2.0",
     "dotenv": "^17.3.1",
+    "prettier": "^3.9.10",
     "tsx": "^4.21.0",
     "typescript": "^5"
   }

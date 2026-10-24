@@ -1,23 +1,18 @@
 {
-	"name": "auto-ofertas-web",
-	"main": ".open-next/worker.js",
-	"assets": {
-		"directory": ".open-next/assets",
-		"binding": "ASSETS"
-	},
-	"compatibility_date": "2025-01-01",
-	"compatibility_flags": ["nodejs_compat"],
-	"d1_databases": [
-		{
-			"binding": "DB",
-			"database_name": "auto-ofertas-db",
-      "database_id": "d73539a8-fc35-4d9c-b947-41c115fbbf60"
-		},
-		{
-			"binding": "auto_ofertas_db",
-			"database_name": "auto-ofertas-db",
-			"database_id": "d73539a8-fc35-4d9c-b947-41c115fbbf60",
-			"remote": true
-		}
-	]
+  "name": "auto-ofertas-web",
+  "main": ".open-next/worker.js",
+  "assets": {
+    "directory": ".open-next/assets",
+    "binding": "ASSETS",
+  },
+  "compatibility_date": "2025-01-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "auto-ofertas-db",
+      "database_id": "d73539a8-fc35-4d9c-b947-41c115fbbf60",
+      "migrations_dir": "drizzle",
+    },
+  ],
 }
