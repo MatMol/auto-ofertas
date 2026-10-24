@@ -6,6 +6,8 @@ import { Button } from "@/components/ui/button";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { SkipNav } from "@/components/skip-nav";
 import "./globals.css";
+import { Suspense } from "react";
+import { HealthStatus } from "@/components/health-status";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -33,7 +35,10 @@ function Navbar() {
             Auto<span className="text-emerald-600">Ofertas</span>
           </span>
         </Link>
-        <nav aria-label="Navegación principal" className="hidden md:flex items-center gap-1">
+        <nav
+          aria-label="Navegación principal"
+          className="hidden md:flex items-center gap-1"
+        >
           <Button variant="ghost" size="sm" asChild>
             <Link href="/buscar" className="gap-1.5">
               <Search size={14} aria-hidden="true" />
@@ -47,6 +52,9 @@ function Navbar() {
             </Link>
           </Button>
           <Button variant="ghost" size="sm" asChild>
+            <Link href="/mi-garage">Mi garage</Link>
+          </Button>
+          <Button variant="ghost" size="sm" asChild>
             <Link href="/comparar" className="gap-1.5">
               <GitCompareArrows size={14} aria-hidden="true" />
               Comparar
@@ -54,6 +62,18 @@ function Navbar() {
           </Button>
         </nav>
         <div className="flex md:hidden items-center gap-1">
+          <details className="relative">
+            <summary className="cursor-pointer p-2 text-sm">Menú</summary>
+            <nav
+              aria-label="Navegación móvil"
+              className="absolute right-0 top-full z-50 w-44 border rounded bg-background p-3 shadow-lg flex flex-col gap-3"
+            >
+              <Link href="/buscar">Buscar</Link>
+              <Link href="/rankings">Rankings</Link>
+              <Link href="/comparar">Comparar</Link>
+              <Link href="/mi-garage">Mi garage</Link>
+            </nav>
+          </details>
           <Button variant="ghost" size="icon" asChild>
             <Link href="/buscar" aria-label="Buscar">
               <Search size={18} aria-hidden="true" />
@@ -77,18 +97,31 @@ function Footer() {
               Autocosmos y Kavak
             </span>
           </div>
-          <nav aria-label="Navegación al pie" className="flex items-center gap-4 text-sm text-muted-foreground">
-            <Link href="/buscar" className="hover:text-foreground transition-colors">
+          <nav
+            aria-label="Navegación al pie"
+            className="flex items-center gap-4 text-sm text-muted-foreground"
+          >
+            <Link
+              href="/buscar"
+              className="hover:text-foreground transition-colors"
+            >
               Buscar
             </Link>
-            <Link href="/rankings" className="hover:text-foreground transition-colors">
+            <Link
+              href="/rankings"
+              className="hover:text-foreground transition-colors"
+            >
               Rankings
             </Link>
-            <Link href="/comparar" className="hover:text-foreground transition-colors">
+            <Link
+              href="/comparar"
+              className="hover:text-foreground transition-colors"
+            >
               Comparar
             </Link>
           </nav>
         </div>
+        <HealthStatus />
         <p className="text-xs text-muted-foreground mt-4 text-center">
           Los precios y datos son orientativos. Verificá siempre en la
           publicación original antes de realizar una compra.
@@ -111,7 +144,11 @@ export default function RootLayout({
         <SkipNav />
         <TooltipProvider delayDuration={200}>
           <Navbar />
-          <main id="main-content" className="flex-1">{children}</main>
+          <main id="main-content" className="flex-1">
+            <Suspense fallback={<p className="p-8">Cargando…</p>}>
+              {children}
+            </Suspense>
+          </main>
           <Footer />
         </TooltipProvider>
       </body>

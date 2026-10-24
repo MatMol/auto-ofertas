@@ -1,8 +1,6 @@
 "use client";
-
-import { Input } from "@/components/ui/input";
-
-interface RangeInputProps {
+import { useState } from "react";
+interface Props {
   min: number | undefined;
   max: number | undefined;
   onMinChange: (v: number | undefined) => void;
@@ -13,39 +11,48 @@ interface RangeInputProps {
   labelMax?: string;
   formatFn?: (v: number) => string;
 }
-
-export function RangeInput({
-  min,
-  max,
-  onMinChange,
-  onMaxChange,
-  placeholderMin = "Mín",
-  placeholderMax = "Máx",
-  labelMin,
-  labelMax,
-}: RangeInputProps) {
+function Field({
+  value,
+  onChange,
+  label,
+  placeholder,
+}: {
+  value: number | undefined;
+  onChange: (v: number | undefined) => void;
+  label: string;
+  placeholder: string;
+}) {
+  const [text, setText] = useState(value === undefined ? "" : String(value));
   return (
-    <div className="flex items-center gap-2">
-      <Input
-        type="number"
-        placeholder={placeholderMin}
-        aria-label={labelMin ?? placeholderMin}
-        value={min ?? ""}
-        onChange={(e) =>
-          onMinChange(e.target.value ? Number(e.target.value) : undefined)
-        }
-        className="text-sm h-8"
+    <input
+      className="min-w-0 w-full border rounded px-2 py-2 text-sm"
+      type="number"
+      min={0}
+      aria-label={label}
+      placeholder={placeholder}
+      value={text}
+      onChange={(e) => setText(e.target.value)}
+      onBlur={() => onChange(text === "" ? undefined : Number(text))}
+    />
+  );
+}
+export function RangeInput(p: Props) {
+  return (
+    <div className="flex gap-2">
+      <Field
+        key={`min-${p.min}`}
+        value={p.min}
+        onChange={p.onMinChange}
+        label={p.labelMin || "Mínimo"}
+        placeholder={p.placeholderMin || "Mínimo"}
       />
-      <span className="text-muted-foreground text-xs" aria-hidden="true">—</span>
-      <Input
-        type="number"
-        placeholder={placeholderMax}
-        aria-label={labelMax ?? placeholderMax}
-        value={max ?? ""}
-        onChange={(e) =>
-          onMaxChange(e.target.value ? Number(e.target.value) : undefined)
-        }
-        className="text-sm h-8"
+      <span aria-hidden="true">–</span>
+      <Field
+        key={`max-${p.max}`}
+        value={p.max}
+        onChange={p.onMaxChange}
+        label={p.labelMax || "Máximo"}
+        placeholder={p.placeholderMax || "Máximo"}
       />
     </div>
   );

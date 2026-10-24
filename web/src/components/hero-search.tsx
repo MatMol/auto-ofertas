@@ -26,14 +26,11 @@ export function HeroSearch() {
           <span className="text-emerald-600">al mejor precio</span>
         </h1>
         <p className="text-muted-foreground text-lg max-w-2xl mx-auto">
-          Comparamos miles de publicaciones de MercadoLibre, deRuedas,
-          Autocosmos y Kavak. Te mostramos las mejores ofertas con un
-          análisis de precio, estado y costos de tenencia.
+          Reunimos publicaciones de MercadoLibre, deRuedas, Autocosmos y Kavak.
+          Te mostramos las mejores ofertas con un análisis de precio y
+          estimaciones de costos de tenencia.
         </p>
-        <form
-          onSubmit={handleSearch}
-          className="flex gap-2 max-w-xl mx-auto"
-        >
+        <form onSubmit={handleSearch} className="flex gap-2 max-w-xl mx-auto">
           <div className="relative flex-1">
             <Search
               size={18}

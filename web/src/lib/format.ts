@@ -1,21 +1,34 @@
-export function formatPrice(price: number, currency: "ARS" | "USD" = "ARS"): string {
+export function formatPrice(
+  price: number,
+  currency: "ARS" | "USD" = "ARS",
+): string {
   if (currency === "USD") {
-    return "US$ " + new Intl.NumberFormat("es-AR", {
-      maximumFractionDigits: 0,
-    }).format(price);
+    return (
+      "US$ " +
+      new Intl.NumberFormat("es-AR", {
+        maximumFractionDigits: 0,
+      }).format(price)
+    );
   }
-  return "$ " + new Intl.NumberFormat("es-AR", {
-    maximumFractionDigits: 0,
-  }).format(price);
+  return (
+    "$ " +
+    new Intl.NumberFormat("es-AR", {
+      maximumFractionDigits: 0,
+    }).format(price)
+  );
 }
 
 export function formatPriceUsd(price: number): string {
-  return "US$ " + new Intl.NumberFormat("es-AR", {
-    maximumFractionDigits: 0,
-  }).format(price);
+  return (
+    "US$ " +
+    new Intl.NumberFormat("es-AR", {
+      maximumFractionDigits: 0,
+    }).format(price)
+  );
 }
 
-export function formatKm(km: number): string {
+export function formatKm(km: number | null): string {
+  if (km === null) return "Km sin informar";
   return new Intl.NumberFormat("es-AR").format(km) + " km";
 }
 
@@ -30,9 +43,9 @@ export function getDealScoreColor(score: number): string {
 }
 
 export function getDealScoreBg(score: number): string {
-  if (score >= 80) return "bg-emerald-500";
-  if (score >= 60) return "bg-amber-500";
-  return "bg-red-500";
+  if (score >= 80) return "bg-emerald-700";
+  if (score >= 60) return "bg-amber-700";
+  return "bg-red-700";
 }
 
 export function getDealScoreLabel(score: number): string {
@@ -40,5 +53,5 @@ export function getDealScoreLabel(score: number): string {
   if (score >= 80) return "Muy buena oferta";
   if (score >= 70) return "Buena oferta";
   if (score >= 60) return "Oferta aceptable";
-  return "Precio alto";
+  return score > 0 ? "Sobre la referencia" : "Sin comparables";
 }

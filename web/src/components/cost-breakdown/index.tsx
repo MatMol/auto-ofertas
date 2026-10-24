@@ -1,6 +1,9 @@
 "use client";
+import { usePersonal, updatePersonal } from "@/lib/personal";
+import { personalCosts } from "@/lib/costs/personal";
+import Link from "next/link";
 
-import { useState, useMemo } from "react";
+import { useState, useId } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
@@ -22,11 +25,8 @@ import {
   Calculator,
   Zap,
 } from "lucide-react";
-import { calculatePatente } from "@/lib/costs/patente";
 import { calculateTransferencia } from "@/lib/costs/transferencia";
 import { calculatePatentamiento } from "@/lib/costs/patentamiento";
-import { calculateFuel } from "@/lib/costs/fuel";
-import { calculateInsurance } from "@/lib/costs/insurance";
 import { calculateLoan } from "@/lib/costs/loan";
 import { formatPrice } from "@/lib/format";
 import { PROVINCES } from "@/lib/types";
@@ -81,70 +81,47 @@ function CostRow({
 }
 
 export function CostBreakdown({ listing }: { listing: Listing }) {
-  const [province, setProvince] = useState(listing.province);
-  const [monthlyKm, setMonthlyKm] = useState(1500);
+  const { preferences } = usePersonal();
+  const fieldId = useId();
+  const province = preferences.province,
+    monthlyKm = preferences.monthlyKm;
+  const setProvince = (province: string) =>
+    updatePersonal((p) => ({
+      ...p,
+      preferences: { ...p.preferences, province },
+    }));
+  const setMonthlyKm = (monthlyKm: number) =>
+    updatePersonal((p) => ({
+      ...p,
+      preferences: { ...p.preferences, monthlyKm: Math.max(0, monthlyKm) },
+    }));
+  const calculated = personalCosts(listing, preferences);
   const [financingPct, setFinancingPct] = useState(70);
   const [loanMonths, setLoanMonths] = useState(48);
   const [tna, setTna] = useState(57.5);
 
-  const patente = useMemo(
-    () => calculatePatente(listing.priceArs, province),
-    [listing.priceArs, province]
-  );
-
-  const transferencia = useMemo(
-    () =>
-      !listing.isNew
-        ? calculateTransferencia(listing.priceArs, listing.isImported)
-        : null,
-    [listing.priceArs, listing.isNew, listing.isImported]
-  );
-
-  const patentamiento = useMemo(
-    () =>
-      listing.isNew
-        ? calculatePatentamiento(listing.priceArs, province, listing.isImported)
-        : null,
-    [listing.priceArs, province, listing.isNew, listing.isImported]
-  );
-
-  const fuel = useMemo(
-    () =>
-      calculateFuel(
-        listing.fuelType,
-        listing.bodyType,
-        listing.tankCapacity,
-        listing.consumption,
-        monthlyKm
-      ),
-    [
-      listing.fuelType,
-      listing.bodyType,
-      listing.tankCapacity,
-      listing.consumption,
-      monthlyKm,
-    ]
-  );
-
-  const insurance = useMemo(
-    () => calculateInsurance(listing.bodyType, listing.year, province),
-    [listing.bodyType, listing.year, province]
-  );
-
-  const loan = useMemo(
-    () => calculateLoan(listing.priceArs, financingPct, tna, loanMonths),
-    [listing.priceArs, financingPct, tna, loanMonths]
-  );
-
-  const monthlyTotal = useMemo(() => {
-    const patenteMsg = patente.cuotaBimestral / 2;
-    const seguroPromedio = (insurance.tercerosMin + insurance.tercerosMax) / 2;
-    return Math.round(patenteMsg + fuel.costoMensual + seguroPromedio);
-  }, [patente, fuel, insurance]);
+  const { patente, fuel, insurance, monthlyTotal } = calculated;
+  const transferencia = !listing.isNew
+    ? calculateTransferencia(calculated.price, listing.isImported)
+    : null;
+  const patentamiento = listing.isNew
+    ? calculatePatentamiento(calculated.price, province, listing.isImported)
+    : null;
+  const loan = calculateLoan(calculated.price, financingPct, tna, loanMonths);
 
   const monthlyTotalWithLoan = monthlyTotal + loan.cuotaMensual;
 
   const isElectric = listing.fuelType === "electrico";
+
+  if (listing.priceKind !== "total" || calculated.price <= 0)
+    return (
+      <Card>
+        <CardContent className="p-6">
+          Los costos requieren un precio total confirmado y una conversión
+          válida a ARS.
+        </CardContent>
+      </Card>
+    );
 
   return (
     <Card>
@@ -159,11 +136,24 @@ export function CostBreakdown({ listing }: { listing: Listing }) {
         </p>
       </CardHeader>
       <CardContent className="space-y-6">
+        <p className="text-xs text-muted-foreground">
+          Tablas orientativas sin validación de vigencia. La patente usa{" "}
+          {preferences.fiscalValue
+            ? "tu valuación fiscal"
+            : "el precio publicado como aproximación de valuación fiscal"}
+          . El origen nacional/importado no está confirmado.{" "}
+          <Link href="/mi-garage" className="underline">
+            Editar costos, cotización y supuestos
+          </Link>
+          .
+        </p>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 p-4 bg-muted/50 rounded-lg">
           <div className="space-y-1.5">
-            <Label className="text-xs">Provincia</Label>
+            <Label htmlFor={`${fieldId}-province`} className="text-xs">
+              Provincia de radicación
+            </Label>
             <Select value={province} onValueChange={setProvince}>
-              <SelectTrigger className="h-8 text-sm">
+              <SelectTrigger id={`${fieldId}-province`} className="h-8 text-sm">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -176,9 +166,13 @@ export function CostBreakdown({ listing }: { listing: Listing }) {
             </Select>
           </div>
           <div className="space-y-1.5">
-            <Label className="text-xs">Km mensuales estimados</Label>
+            <Label htmlFor={`${fieldId}-km`} className="text-xs">
+              Km mensuales estimados
+            </Label>
             <Input
               type="number"
+              id={`${fieldId}-km`}
+              min={0}
               value={monthlyKm}
               onChange={(e) => setMonthlyKm(Number(e.target.value) || 0)}
               className="h-8 text-sm"
@@ -221,7 +215,9 @@ export function CostBreakdown({ listing }: { listing: Listing }) {
               />
               <CostRow
                 label="Total transferencia"
-                value={formatPrice(transferencia.total)}
+                value={formatPrice(
+                  preferences.transferCost || transferencia.total,
+                )}
                 highlight
               />
             </CostSection>
@@ -246,7 +242,9 @@ export function CostBreakdown({ listing }: { listing: Listing }) {
               />
               <CostRow
                 label="Total patentamiento"
-                value={formatPrice(patentamiento.total)}
+                value={formatPrice(
+                  preferences.registrationCost || patentamiento.total,
+                )}
                 highlight
               />
             </CostSection>
@@ -324,11 +322,20 @@ export function CostBreakdown({ listing }: { listing: Listing }) {
               />
             </div>
             <div className="space-y-1.5">
-              <Label className="text-xs text-muted-foreground">TNA (%)</Label>
+              <Label
+                htmlFor={`${fieldId}-tna`}
+                className="text-xs text-muted-foreground"
+              >
+                TNA (%)
+              </Label>
               <Input
                 type="number"
+                id={`${fieldId}-tna`}
+                min={0}
                 value={tna}
-                onChange={(e) => setTna(Number(e.target.value) || 0)}
+                onChange={(e) =>
+                  setTna(Math.max(0, Number(e.target.value) || 0))
+                }
                 className="h-8 text-sm w-24"
                 step={0.5}
               />
@@ -341,7 +348,7 @@ export function CostBreakdown({ listing }: { listing: Listing }) {
               value={formatPrice(loan.montoFinanciado)}
             />
             <CostRow
-              label="Cuota mensual"
+              label="Cuota mensual promedio con IVA"
               value={formatPrice(loan.cuotaMensual)}
               highlight
             />
@@ -355,13 +362,24 @@ export function CostBreakdown({ listing }: { listing: Listing }) {
             />
             <p className="text-[11px] text-muted-foreground">
               Simulación orientativa con sistema francés. Consultá con tu banco
-              para valores exactos.
+              para valores exactos. El IVA se distribuye como promedio; no es un
+              cronograma bancario ni incluye todos los cargos.
             </p>
           </div>
         </CostSection>
 
         <Separator />
 
+        <CostRow
+          label="Seguro usado en total"
+          value={formatPrice(calculated.insuranceMonthly)}
+        />
+        <CostRow
+          label="Mantenimiento + cochera + peajes"
+          value={formatPrice(
+            preferences.maintenance + preferences.parking + preferences.tolls,
+          )}
+        />
         {/* Resumen */}
         <Card className="bg-primary text-primary-foreground">
           <CardContent className="p-5 space-y-3">
@@ -369,9 +387,7 @@ export function CostBreakdown({ listing }: { listing: Listing }) {
               Costo Total Mensual Estimado
             </h4>
             <div className="flex items-baseline justify-between">
-              <span className="text-sm opacity-90">
-                Sin préstamo
-              </span>
+              <span className="text-sm opacity-90">Sin préstamo</span>
               <span className="text-2xl font-bold">
                 {formatPrice(monthlyTotal)}
                 <span className="text-sm font-normal opacity-80">/mes</span>
@@ -387,9 +403,9 @@ export function CostBreakdown({ listing }: { listing: Listing }) {
               </span>
             </div>
             <p className="text-xs opacity-75">
-              Incluye patente + combustible + seguro terceros (promedio)
-              {loan.cuotaMensual > 0 && " + cuota préstamo"}.
-              No incluye estacionamiento, peajes ni mantenimiento.
+              Incluye patente + combustible + seguro (personalizado o estimado)
+              {loan.cuotaMensual > 0 && " + cuota préstamo"}. Incluye tus
+              importes configurados de mantenimiento, cochera y peajes.
             </p>
           </CardContent>
         </Card>

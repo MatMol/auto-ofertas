@@ -1,304 +1,275 @@
 "use client";
-
-import { useState, useMemo, useCallback, useEffect, Suspense } from "react";
+import { readListings } from "@/lib/http";
+import { useState, useEffect, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
-import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
+import {
+  Sheet,
+  SheetContent,
+  SheetTrigger,
+  SheetTitle,
+  SheetDescription,
+} from "@/components/ui/sheet";
 import { ListingCard } from "@/components/listing-card";
 import { FilterSidebar } from "@/components/filters/filter-sidebar";
 import { FilterChips } from "@/components/filters/filter-chips";
-import { SlidersHorizontal, ChevronLeft, ChevronRight, Loader2, Search } from "lucide-react";
-import { Input } from "@/components/ui/input";
+import { parseFilters, filtersToParams, clearFilters } from "@/lib/search";
+import { usePersonal, updatePersonal } from "@/lib/personal";
 import type { SearchFilters, Listing } from "@/lib/types";
-
-function parseFiltersFromParams(params: URLSearchParams): SearchFilters {
-  return {
-    query: params.get("q") ?? undefined,
-    brands: params.get("brands")?.split(",").filter(Boolean) ?? undefined,
-    models: params.get("models")?.split(",").filter(Boolean) ?? undefined,
-    yearMin: params.get("yearMin") ? Number(params.get("yearMin")) : undefined,
-    yearMax: params.get("yearMax") ? Number(params.get("yearMax")) : undefined,
-    priceMin: params.get("priceMin") ? Number(params.get("priceMin")) : undefined,
-    priceMax: params.get("priceMax") ? Number(params.get("priceMax")) : undefined,
-    kmMin: params.get("kmMin") ? Number(params.get("kmMin")) : undefined,
-    kmMax: params.get("kmMax") ? Number(params.get("kmMax")) : undefined,
-    provinces: params.get("provinces")?.split(",").filter(Boolean) ?? undefined,
-    fuelTypes: (params.get("fuelTypes")?.split(",").filter(Boolean) as SearchFilters["fuelTypes"]) ?? undefined,
-    transmissions: (params.get("transmissions")?.split(",").filter(Boolean) as SearchFilters["transmissions"]) ?? undefined,
-    bodyTypes: (params.get("bodyTypes")?.split(",").filter(Boolean) as SearchFilters["bodyTypes"]) ?? undefined,
-    sellerTypes: (params.get("sellerTypes")?.split(",").filter(Boolean) as SearchFilters["sellerTypes"]) ?? undefined,
-    sources: (params.get("sources")?.split(",").filter(Boolean) as SearchFilters["sources"]) ?? undefined,
-    verifiedOnly: params.get("verifiedOnly") === "true" || undefined,
-    acceptsSwap: params.get("acceptsSwap") === "true" || undefined,
-    hasFinancing: params.get("hasFinancing") === "true" || undefined,
-    dealScoreMin: params.get("dealScoreMin") ? Number(params.get("dealScoreMin")) : undefined,
-    sortBy: (params.get("sortBy") as SearchFilters["sortBy"]) ?? "deal_score",
-    page: params.get("page") ? Number(params.get("page")) : 1,
-    pageSize: 12,
-  };
-}
-
-function filtersToParams(filters: SearchFilters): URLSearchParams {
-  const params = new URLSearchParams();
-  if (filters.query) params.set("q", filters.query);
-  if (filters.brands?.length) params.set("brands", filters.brands.join(","));
-  if (filters.models?.length) params.set("models", filters.models.join(","));
-  if (filters.yearMin) params.set("yearMin", String(filters.yearMin));
-  if (filters.yearMax) params.set("yearMax", String(filters.yearMax));
-  if (filters.priceMin) params.set("priceMin", String(filters.priceMin));
-  if (filters.priceMax) params.set("priceMax", String(filters.priceMax));
-  if (filters.kmMin) params.set("kmMin", String(filters.kmMin));
-  if (filters.kmMax) params.set("kmMax", String(filters.kmMax));
-  if (filters.provinces?.length) params.set("provinces", filters.provinces.join(","));
-  if (filters.fuelTypes?.length) params.set("fuelTypes", filters.fuelTypes.join(","));
-  if (filters.transmissions?.length) params.set("transmissions", filters.transmissions.join(","));
-  if (filters.bodyTypes?.length) params.set("bodyTypes", filters.bodyTypes.join(","));
-  if (filters.sellerTypes?.length) params.set("sellerTypes", filters.sellerTypes.join(","));
-  if (filters.sources?.length) params.set("sources", filters.sources.join(","));
-  if (filters.verifiedOnly) params.set("verifiedOnly", "true");
-  if (filters.acceptsSwap) params.set("acceptsSwap", "true");
-  if (filters.hasFinancing) params.set("hasFinancing", "true");
-  if (filters.dealScoreMin) params.set("dealScoreMin", String(filters.dealScoreMin));
-  if (filters.sortBy && filters.sortBy !== "deal_score") params.set("sortBy", filters.sortBy);
-  if (filters.page && filters.page > 1) params.set("page", String(filters.page));
-  return params;
-}
-
-function SearchContent() {
-  const searchParams = useSearchParams();
-  const router = useRouter();
-  const [mobileOpen, setMobileOpen] = useState(false);
-  const [queryInput, setQueryInput] = useState("");
-  const [listings, setListings] = useState<Listing[]>([]);
-  const [total, setTotal] = useState(0);
-  const [brands, setBrands] = useState<{ brand: string; count: number }[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  const filters = useMemo(
-    () => parseFiltersFromParams(searchParams),
-    [searchParams]
-  );
-
+function Results({ params }: { params: string }) {
+  const router = useRouter(),
+    personal = usePersonal();
+  let initial: SearchFilters = {},
+    invalid = "";
+  try {
+    initial = parseFilters(new URLSearchParams(params));
+  } catch (e) {
+    invalid = (e as Error).message;
+  }
+  const [draft, setDraft] = useState(initial),
+    [query, setQuery] = useState(initial.query || ""),
+    [open, setOpen] = useState(false),
+    [data, setData] = useState<{ listings: Listing[]; total: number } | null>(
+      null,
+    ),
+    [brands, setBrands] = useState<{ brand: string; count: number }[]>([]),
+    [error, setError] = useState(invalid),
+    [attempt, setAttempt] = useState(0),
+    [loading, setLoading] = useState(true),
+    [saved, setSaved] = useState(false);
+  function update(f: SearchFilters) {
+    try {
+      const p = filtersToParams(f);
+      parseFilters(p);
+      router.push(`/buscar?${p}`);
+      setOpen(false);
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  }
   useEffect(() => {
-    setQueryInput(filters.query ?? "");
-  }, [filters.query]);
-
-  const totalPages = Math.ceil(total / (filters.pageSize ?? 12));
-
-  useEffect(() => {
+    if (invalid) return;
     const controller = new AbortController();
-    setLoading(true);
-
-    fetch(`/api/listings?${searchParams.toString()}`, { signal: controller.signal })
-      .then((res) => res.json() as Promise<{ listings: Listing[]; total: number }>)
-      .then((data) => {
-        setListings(data.listings);
-        setTotal(data.total);
-        setLoading(false);
-      })
-      .catch((err: Error) => {
-        if (err.name !== "AbortError") setLoading(false);
-      });
-
+    async function load() {
+      try {
+        const r = await fetch(`/api/listings?${params}`, {
+          signal: controller.signal,
+        });
+        const body = await readListings(r);
+        setData(body);
+        setError("");
+      } catch (e) {
+        if ((e as Error).name !== "AbortError") setError((e as Error).message);
+      } finally {
+        if (!controller.signal.aborted) setLoading(false);
+      }
+    }
+    void load();
     return () => controller.abort();
-  }, [searchParams]);
-
+  }, [params, attempt, invalid]);
   useEffect(() => {
-    fetch("/api/brands")
-      .then((res) => res.json() as Promise<{ brand: string; count: number }[]>)
-      .then((data) => setBrands(data))
+    const c = new AbortController();
+    fetch("/api/brands", { signal: c.signal })
+      .then((r) => (r.ok ? r.json() : []))
+      .then((d) => setBrands(Array.isArray(d) ? d : []))
       .catch(() => {});
+    return () => c.abort();
   }, []);
-
-  const updateFilters = useCallback(
-    (newFilters: SearchFilters) => {
-      const params = filtersToParams(newFilters);
-      router.push(`/buscar?${params.toString()}`);
-    },
-    [router]
+  const filters = initial,
+    totalPages = Math.ceil((data?.total || 0) / (filters.pageSize || 12));
+  const sidebar = (
+    <>
+      <FilterSidebar filters={draft} onChange={setDraft} brands={brands} />
+      {error && (
+        <p role="alert" className="text-sm text-red-700 mt-3">
+          {error}
+        </p>
+      )}
+      <Button
+        className="w-full mt-4 sticky bottom-0 shadow"
+        onClick={() => update({ ...draft, page: 1 })}
+      >
+        Aplicar filtros
+      </Button>
+    </>
   );
-
   return (
-    <div className="mx-auto max-w-7xl px-4 py-6">
-      <h1 className="sr-only">Resultados de búsqueda de autos</h1>
+    <div className="max-w-7xl mx-auto p-4 md:p-6">
+      <h1 className="text-2xl font-bold mb-4">Buscar autos</h1>
       <div className="flex gap-6">
-        {/* Desktop Sidebar */}
-        <aside aria-label="Filtros de búsqueda" className="hidden lg:block w-72 flex-shrink-0">
-          <div className="sticky top-20 max-h-[calc(100vh-6rem)] overflow-y-auto pr-2">
-            <FilterSidebar
-              filters={filters}
-              onChange={updateFilters}
-              brands={brands}
-            />
+        <aside
+          aria-label="Filtros de búsqueda"
+          className="hidden lg:block w-72 shrink-0"
+        >
+          <div className="sticky top-20 max-h-[calc(100vh-6rem)] overflow-auto pr-2">
+            {sidebar}
           </div>
         </aside>
-
-        {/* Main Content */}
-        <div className="flex-1 min-w-0 space-y-4">
-          {/* Search bar */}
+        <div className="min-w-0 flex-1 space-y-4">
           <form
+            className="flex gap-2"
             onSubmit={(e) => {
               e.preventDefault();
-              updateFilters({ ...filters, query: queryInput.trim() || undefined, page: 1 });
+              update({ ...filters, query: query.trim() || undefined, page: 1 });
             }}
-            className="flex gap-2"
           >
-            <div className="relative flex-1">
-              <Search
-                size={18}
-                className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
-                aria-hidden="true"
-              />
-              <Input
-                type="search"
-                value={queryInput}
-                onChange={(e) => setQueryInput(e.target.value)}
-                placeholder="Toyota Corolla 2020, Ford Ranger diesel..."
-                aria-label="Buscar autos por marca, modelo o año"
-                className="pl-10 h-10"
-              />
-            </div>
-            <Button type="submit" size="default" className="h-10 px-4">
-              Buscar
-            </Button>
+            <input
+              type="search"
+              className="border rounded px-3 py-2 min-w-0 flex-1"
+              aria-label="Buscar marca, modelo, año o combustible"
+              placeholder="Toyota Corolla 2020"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+            />
+            <Button>Buscar</Button>
           </form>
-
-          {/* Mobile filter button + results count */}
-          <div className="flex items-center justify-between gap-3">
-            <p className="text-sm text-muted-foreground" aria-live="polite" aria-atomic="true">
-              <span className="font-semibold text-foreground">{total}</span>{" "}
-              autos encontrados
+          <div className="flex flex-wrap gap-2 items-center justify-between">
+            <p aria-live="polite">
+              {loading && !error
+                ? "Buscando…"
+                : `${data?.total || 0} autos encontrados`}
             </p>
-            <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
-              <SheetTrigger asChild>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="lg:hidden gap-1.5"
+            <div className="flex gap-2">
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  const name = window.prompt(
+                    "Nombre de la búsqueda",
+                    query || "Mi búsqueda",
+                  );
+                  if (name?.trim()) {
+                    updatePersonal((s) => ({
+                      ...s,
+                      searches: [
+                        ...s.searches,
+                        {
+                          id: crypto.randomUUID(),
+                          name: name.trim(),
+                          params,
+                          createdAt: new Date().toISOString(),
+                          seen: data?.listings.map((l) => l.id) || [],
+                          initialized: true,
+                        },
+                      ],
+                    }));
+                    setSaved(true);
+                  }
+                }}
+              >
+                {saved ? "Guardada ✓" : "Guardar búsqueda"}
+              </Button>
+              <Sheet open={open} onOpenChange={setOpen}>
+                <SheetTrigger asChild>
+                  <Button variant="outline" className="lg:hidden" size="sm">
+                    Filtros
+                  </Button>
+                </SheetTrigger>
+                <SheetContent
+                  side="left"
+                  className="w-[min(90vw,360px)] overflow-y-auto p-5"
                 >
-                  <SlidersHorizontal size={14} aria-hidden="true" />
-                  Filtros
-                </Button>
-              </SheetTrigger>
-              <SheetContent side="left" className="w-80 overflow-y-auto">
-                <FilterSidebar
-                  filters={filters}
-                  onChange={(f) => {
-                    updateFilters(f);
-                    setMobileOpen(false);
-                  }}
-                  brands={brands}
-                  onClose={() => setMobileOpen(false)}
-                />
-              </SheetContent>
-            </Sheet>
+                  <SheetTitle>Filtros de búsqueda</SheetTitle>
+                  <SheetDescription>
+                    Ajustá los criterios y aplicalos al terminar.
+                  </SheetDescription>
+                  {sidebar}
+                </SheetContent>
+              </Sheet>
+            </div>
           </div>
-
-          {/* Active filter chips */}
-          <FilterChips filters={filters} onChange={updateFilters} />
-
-          {/* Results grid */}
-          {loading ? (
-            <div className="flex items-center justify-center py-12">
-              <Loader2 className="animate-spin text-muted-foreground" size={24} />
-            </div>
-          ) : listings.length > 0 ? (
-            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
-              {listings.map((listing) => (
-                <ListingCard key={listing.id} listing={listing} />
-              ))}
-            </div>
-          ) : (
-            <div className="text-center py-12 space-y-3">
-              <p className="text-lg font-medium">
-                No encontramos autos con esos filtros
-              </p>
-              <p className="text-muted-foreground text-sm">
-                Probá ampliar tu búsqueda o quitar algunos filtros.
-              </p>
+          <FilterChips filters={filters} onChange={update} />
+          {error ? (
+            <div
+              role="alert"
+              className="border border-red-300 rounded p-4 space-y-3"
+            >
+              <p>{error}</p>
+              <Button
+                onClick={() => {
+                  setLoading(true);
+                  setAttempt((a) => a + 1);
+                }}
+                disabled={!!invalid}
+              >
+                Reintentar
+              </Button>
               <Button
                 variant="outline"
-                onClick={() =>
-                  updateFilters({
-                    ...filters,
-                    brands: undefined,
-                    provinces: undefined,
-                    yearMin: undefined,
-                    yearMax: undefined,
-                    priceMin: undefined,
-                    priceMax: undefined,
-                    kmMin: undefined,
-                    kmMax: undefined,
-                    fuelTypes: undefined,
-                    bodyTypes: undefined,
-                    transmissions: undefined,
-                    sellerTypes: undefined,
-                    sources: undefined,
-                    verifiedOnly: false,
-                    acceptsSwap: false,
-                    hasFinancing: false,
-                    dealScoreMin: undefined,
-                    page: 1,
-                  })
-                }
+                onClick={() => update(clearFilters(filters))}
               >
-                Limpiar filtros
+                Limpiar búsqueda
+              </Button>
+            </div>
+          ) : loading ? (
+            <p role="status">Cargando publicaciones…</p>
+          ) : data?.listings.length ? (
+            <>
+              <div className="grid sm:grid-cols-2 xl:grid-cols-3 gap-4">
+                {data.listings
+                  .filter((l) => !personal.discarded.includes(l.id))
+                  .map((l) => (
+                    <ListingCard key={l.id} listing={l} />
+                  ))}
+              </div>
+              {data.listings.some((l) => personal.discarded.includes(l.id)) && (
+                <p className="text-sm text-muted-foreground">
+                  Ocultamos avisos descartados. Podés restaurarlos en Mi garage.
+                </p>
+              )}
+            </>
+          ) : (
+            <div className="border rounded p-8 text-center space-y-3">
+              <p>No encontramos autos con esos filtros.</p>
+              <Button
+                variant="outline"
+                onClick={() => update(clearFilters(filters))}
+              >
+                Limpiar búsqueda
               </Button>
             </div>
           )}
-
-          {/* Pagination */}
-          {totalPages > 1 && (
-            <div className="flex items-center justify-center gap-2 pt-4">
+          {totalPages > 1 && !error && (
+            <nav
+              aria-label="Páginas de resultados"
+              className="flex justify-center items-center gap-3"
+            >
               <Button
                 variant="outline"
-                size="sm"
-                disabled={(filters.page ?? 1) <= 1}
+                disabled={(filters.page || 1) <= 1}
                 onClick={() =>
-                  updateFilters({
-                    ...filters,
-                    page: (filters.page ?? 1) - 1,
-                  })
+                  update({ ...filters, page: (filters.page || 1) - 1 })
                 }
               >
-                <ChevronLeft size={14} aria-hidden="true" />
                 Anterior
               </Button>
-              <span className="text-sm text-muted-foreground px-3">
-                Página {filters.page ?? 1} de {totalPages}
+              <span>
+                {filters.page || 1} / {totalPages}
               </span>
               <Button
                 variant="outline"
-                size="sm"
-                disabled={(filters.page ?? 1) >= totalPages}
+                disabled={(filters.page || 1) >= totalPages}
                 onClick={() =>
-                  updateFilters({
-                    ...filters,
-                    page: (filters.page ?? 1) + 1,
-                  })
+                  update({ ...filters, page: (filters.page || 1) + 1 })
                 }
               >
                 Siguiente
-                <ChevronRight size={14} aria-hidden="true" />
               </Button>
-            </div>
+            </nav>
           )}
         </div>
       </div>
     </div>
   );
 }
-
-export default function BuscarPage() {
+function Search() {
+  const params = useSearchParams().toString();
+  return <Results key={params} params={params} />;
+}
+export default function Page() {
   return (
-    <Suspense
-      fallback={
-        <div className="flex items-center justify-center py-24">
-          <p className="text-muted-foreground">Cargando...</p>
-        </div>
-      }
-    >
-      <SearchContent />
+    <Suspense fallback={<p>Cargando búsqueda…</p>}>
+      <Search />
     </Suspense>
   );
 }

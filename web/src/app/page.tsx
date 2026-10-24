@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { ListingCard } from "@/components/listing-card";
+import { PersonalHighlights } from "@/components/personal-highlights";
 import { HeroSearch } from "@/components/hero-search";
 import { getTopListings } from "@/lib/db/client";
 import {
@@ -67,6 +68,7 @@ export default async function HomePage() {
   return (
     <div className="space-y-8 pb-10">
       <HeroSearch />
+      <PersonalHighlights />
 
       {/* Quick Categories */}
       <section className="mx-auto max-w-7xl px-4">
@@ -80,7 +82,11 @@ export default async function HomePage() {
                 href={cat.href}
                 className="inline-flex items-center gap-2 rounded-full border border-border bg-background px-4 py-2 text-sm font-medium text-foreground transition-colors hover:bg-accent hover:border-accent-foreground/20"
               >
-                <Icon size={18} className="text-muted-foreground" aria-hidden="true" />
+                <Icon
+                  size={18}
+                  className="text-muted-foreground"
+                  aria-hidden="true"
+                />
                 {cat.label}
               </Link>
             );
@@ -94,10 +100,12 @@ export default async function HomePage() {
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-2">
               <Star size={20} className="text-amber-500" aria-hidden="true" />
-              <h2 className="text-xl font-semibold">Mejores ofertas — Usados</h2>
+              <h2 className="text-xl font-semibold">
+                Mejores ofertas — Usados
+              </h2>
             </div>
             <Button variant="ghost" size="sm" asChild>
-              <a href="/buscar?sortBy=deal_score" className="gap-1">
+              <a href="/buscar?sortBy=deal_score&isNew=false" className="gap-1">
                 Ver todas
                 <ArrowRight size={14} aria-hidden="true" />
               </a>
@@ -116,11 +124,15 @@ export default async function HomePage() {
         <section className="mx-auto max-w-7xl px-4">
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-2">
-              <Sparkles size={20} className="text-blue-500" aria-hidden="true" />
+              <Sparkles
+                size={20}
+                className="text-blue-500"
+                aria-hidden="true"
+              />
               <h2 className="text-xl font-semibold">Mejores ofertas — 0km</h2>
             </div>
             <Button variant="ghost" size="sm" asChild>
-              <a href="/buscar?sortBy=deal_score&kmMax=0" className="gap-1">
+              <a href="/buscar?sortBy=deal_score&isNew=true" className="gap-1">
                 Ver todas
                 <ArrowRight size={14} aria-hidden="true" />
               </a>
@@ -139,8 +151,12 @@ export default async function HomePage() {
         <section className="mx-auto max-w-7xl px-4">
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-2">
-              <TrendingDown size={20} className="text-emerald-500" aria-hidden="true" />
-              <h2 className="text-xl font-semibold">Recién publicados</h2>
+              <TrendingDown
+                size={20}
+                className="text-emerald-500"
+                aria-hidden="true"
+              />
+              <h2 className="text-xl font-semibold">Recién detectados</h2>
             </div>
             <Button variant="ghost" size="sm" asChild>
               <a href="/buscar?sortBy=newest" className="gap-1">

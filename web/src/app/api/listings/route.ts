@@ -1,45 +1,32 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getListings } from "@/lib/db/client";
-import type { SearchFilters } from "@/lib/types";
-
+import { getListings, getListingsByIds } from "@/lib/db/client";
+import { parseFilters } from "@/lib/search";
 export const dynamic = "force-dynamic";
-
 export async function GET(request: NextRequest) {
-  const params = request.nextUrl.searchParams;
-
-  const filters: SearchFilters = {
-    query: params.get("q") ?? undefined,
-    brands: params.get("brands")?.split(",").filter(Boolean) ?? undefined,
-    models: params.get("models")?.split(",").filter(Boolean) ?? undefined,
-    yearMin: params.get("yearMin") ? Number(params.get("yearMin")) : undefined,
-    yearMax: params.get("yearMax") ? Number(params.get("yearMax")) : undefined,
-    priceMin: params.get("priceMin") ? Number(params.get("priceMin")) : undefined,
-    priceMax: params.get("priceMax") ? Number(params.get("priceMax")) : undefined,
-    kmMin: params.get("kmMin") ? Number(params.get("kmMin")) : undefined,
-    kmMax: params.get("kmMax") ? Number(params.get("kmMax")) : undefined,
-    provinces: params.get("provinces")?.split(",").filter(Boolean) ?? undefined,
-    fuelTypes: params.get("fuelTypes")?.split(",").filter(Boolean) as SearchFilters["fuelTypes"],
-    transmissions: params.get("transmissions")?.split(",").filter(Boolean) as SearchFilters["transmissions"],
-    bodyTypes: params.get("bodyTypes")?.split(",").filter(Boolean) as SearchFilters["bodyTypes"],
-    sellerTypes: params.get("sellerTypes")?.split(",").filter(Boolean) as SearchFilters["sellerTypes"],
-    sources: params.get("sources")?.split(",").filter(Boolean) as SearchFilters["sources"],
-    verifiedOnly: params.get("verifiedOnly") === "true" || undefined,
-    acceptsSwap: params.get("acceptsSwap") === "true" || undefined,
-    hasFinancing: params.get("hasFinancing") === "true" || undefined,
-    dealScoreMin: params.get("dealScoreMin") ? Number(params.get("dealScoreMin")) : undefined,
-    sortBy: (params.get("sortBy") as SearchFilters["sortBy"]) ?? "deal_score",
-    page: params.get("page") ? Number(params.get("page")) : 1,
-    pageSize: 12,
-  };
-
+  let filters;
   try {
-    const data = await getListings(filters);
-    return NextResponse.json(data);
-  } catch (err) {
-    console.error("GET /api/listings error:", err);
+    filters = parseFilters(request.nextUrl.searchParams);
+  } catch (e) {
+    return NextResponse.json({ error: (e as Error).message }, { status: 400 });
+  }
+  try {
+    const ids = request.nextUrl.searchParams.get("ids");
+    if (ids) {
+      const values = [...new Set(ids.split(","))];
+      if (values.length > 60 || values.some((v) => v.length > 160))
+        return NextResponse.json(
+          { error: "Demasiados avisos" },
+          { status: 400 },
+        );
+      const listings = await getListingsByIds(values);
+      return NextResponse.json({ listings, total: listings.length });
+    }
+    return NextResponse.json(await getListings(filters));
+  } catch (e) {
+    console.error("listings", e);
     return NextResponse.json(
-      { error: String(err), listings: [], total: 0 },
-      { status: 500 }
+      { error: "No pudimos cargar los autos. Volvé a intentar." },
+      { status: 503 },
     );
   }
 }

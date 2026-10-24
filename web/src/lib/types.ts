@@ -1,11 +1,8 @@
-export type Source = "mercadolibre" | "autocosmos" | "kavak" | "deruedas";
+import type { ListingRecord } from "../../../shared/listing";
+export type Source =
+  "mercadolibre" | "autocosmos" | "kavak" | "deruedas" | "external";
 
-export type FuelType =
-  | "nafta"
-  | "diesel"
-  | "gnc"
-  | "electrico"
-  | "hibrido";
+export type FuelType = "nafta" | "diesel" | "gnc" | "electrico" | "hibrido";
 
 export type Transmission = "manual" | "automatica";
 
@@ -22,46 +19,25 @@ export type BodyType =
 export type SellerType = "particular" | "concesionaria";
 
 export type VerificationBadge =
-  | "kavak_verified"
-  | "ml_verified"
-  | "concesionaria"
-  | null;
+  "kavak_verified" | "ml_verified" | "concesionaria" | null;
 
 export type Currency = "ARS" | "USD";
 
-export interface Listing {
-  id: string;
+export interface Listing extends Omit<
+  ListingRecord,
+  | "source"
+  | "fuelType"
+  | "transmission"
+  | "bodyType"
+  | "sellerType"
+  | "verificationBadge"
+> {
   source: Source;
-  sourceId: string;
-  sourceUrl: string;
-  brand: string;
-  model: string;
-  version: string | null;
-  year: number;
-  isNew: boolean;
-  price: number;
-  currency: Currency;
-  priceArs: number;
-  priceUsd: number | null;
-  km: number;
   fuelType: FuelType | null;
   transmission: Transmission | null;
   bodyType: BodyType | null;
-  doors: number | null;
-  isImported: boolean;
-  location: string;
-  province: string;
-  imageUrls: string[];
   sellerType: SellerType;
   verificationBadge: VerificationBadge;
-  acceptsSwap: boolean;
-  hasFinancing: boolean;
-  dealScore: number;
-  consumption: number | null;
-  tankCapacity: number | null;
-  createdAt: string;
-  updatedAt: string;
-  isActive: boolean;
 }
 
 export interface ReferencePrice {
@@ -86,6 +62,8 @@ export interface BrandModel {
 
 export interface SearchFilters {
   query?: string;
+  isNew?: boolean;
+  includeUnconfirmed?: boolean;
   brands?: string[];
   models?: string[];
   yearMin?: number;
@@ -110,12 +88,7 @@ export interface SearchFilters {
 }
 
 export type SortOption =
-  | "deal_score"
-  | "price_asc"
-  | "price_desc"
-  | "km_asc"
-  | "newest"
-  | "price_per_km";
+  "deal_score" | "price_asc" | "price_desc" | "km_asc" | "newest";
 
 export interface SearchResult {
   listings: Listing[];
@@ -176,7 +149,6 @@ export const SORT_OPTIONS: { value: SortOption; label: string }[] = [
   { value: "price_desc", label: "Mayor precio" },
   { value: "km_asc", label: "Menos kilómetros" },
   { value: "newest", label: "Más recientes" },
-  { value: "price_per_km", label: "Mejor precio/km" },
 ];
 
 export const FUEL_TYPE_LABELS: Record<FuelType, string> = {
@@ -203,4 +175,5 @@ export const SOURCE_LABELS: Record<Source, string> = {
   autocosmos: "Autocosmos",
   kavak: "Kavak",
   deruedas: "deRuedas",
+  external: "Aviso externo",
 };

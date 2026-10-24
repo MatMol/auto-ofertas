@@ -9,6 +9,9 @@ export async function GET() {
     return NextResponse.json(brands);
   } catch (err) {
     console.error("GET /api/brands error:", err);
-    return NextResponse.json({ error: String(err) }, { status: 500 });
+    return NextResponse.json(
+      { error: "No pudimos cargar las marcas" },
+      { status: 500 },
+    );
   }
 }

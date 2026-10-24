@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback } from "react";
+import { useCallback, useState, useEffect } from "react";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
@@ -64,10 +64,27 @@ export function FilterSidebar({
     (patch: Partial<SearchFilters>) => {
       onChange({ ...filters, ...patch, page: 1 });
     },
-    [filters, onChange]
+    [filters, onChange],
   );
 
+  const [models, setModels] = useState<string[]>([]);
+  const brandsKey = filters.brands?.join(",") || "";
+  useEffect(() => {
+    const c = new AbortController();
+    fetch(`/api/models?brands=${encodeURIComponent(brandsKey)}`, {
+      signal: c.signal,
+    })
+      .then((r) => (r.ok ? r.json() : []))
+      .then((d) => setModels(Array.isArray(d) ? d : []))
+      .catch(() => {});
+    return () => c.abort();
+  }, [brandsKey]);
   const hasFilters =
+    filters.query ||
+    filters.models?.length ||
+    filters.sellerTypes?.length ||
+    filters.isNew !== undefined ||
+    filters.includeUnconfirmed ||
     (filters.brands?.length ?? 0) > 0 ||
     (filters.provinces?.length ?? 0) > 0 ||
     (filters.fuelTypes?.length ?? 0) > 0 ||
@@ -95,19 +112,72 @@ export function FilterSidebar({
         <h2 className="font-semibold text-lg">Filtros</h2>
         <div className="flex items-center gap-1">
           {hasFilters && (
-            <Button variant="ghost" size="sm" onClick={clearAll} className="text-xs h-7 gap-1">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={clearAll}
+              className="text-xs h-7 gap-1"
+            >
               <RotateCcw size={12} />
               Limpiar
             </Button>
           )}
           {onClose && (
-            <Button variant="ghost" size="icon" onClick={onClose} className="h-7 w-7 lg:hidden" aria-label="Cerrar filtros">
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={onClose}
+              className="h-7 w-7 lg:hidden"
+              aria-label="Cerrar filtros"
+            >
               <X size={16} aria-hidden="true" />
             </Button>
           )}
         </div>
       </div>
 
+      <FilterSection label="Condición">
+        <select
+          aria-label="Condición del vehículo"
+          className="border rounded p-2 w-full"
+          value={filters.isNew === undefined ? "all" : String(filters.isNew)}
+          onChange={(e) =>
+            update({
+              isNew:
+                e.target.value === "all"
+                  ? undefined
+                  : e.target.value === "true",
+            })
+          }
+        >
+          <option value="all">Nuevos y usados</option>
+          <option value="false">Usados</option>
+          <option value="true">0 km confirmado</option>
+        </select>
+      </FilterSection>
+      <FilterSection label="Modelo">
+        <select
+          aria-label="Modelo"
+          className="border rounded p-2 w-full"
+          value={filters.models?.[0] || ""}
+          onChange={(e) =>
+            update({ models: e.target.value ? [e.target.value] : undefined })
+          }
+        >
+          <option value="">Todos</option>
+          {models.map((m) => (
+            <option key={m}>{m}</option>
+          ))}
+        </select>
+      </FilterSection>
+      <label className="flex gap-2 text-sm">
+        <input
+          type="checkbox"
+          checked={!!filters.includeUnconfirmed}
+          onChange={(e) => update({ includeUnconfirmed: e.target.checked })}
+        />
+        Incluir anticipos, cuotas y precios sin confirmar
+      </label>
       <Separator />
 
       <FilterSection label="Ordenar por">
@@ -130,7 +200,9 @@ export function FilterSidebar({
 
       <Accordion type="multiple" defaultValue={["basics"]} className="mt-4">
         <AccordionItem value="basics">
-          <AccordionTrigger className="text-sm py-3">Precio, año, km y marca</AccordionTrigger>
+          <AccordionTrigger className="text-sm py-3">
+            Precio, año, km y marca
+          </AccordionTrigger>
           <AccordionContent className="space-y-4">
             <FilterSection label="Precio (ARS)">
               <RangeInput
@@ -170,46 +242,49 @@ export function FilterSidebar({
             </FilterSection>
             <FilterSection label="Marca">
               <ChipGroup
-                options={brands
-                  .slice(0, 12)
-                  .map((b) => ({
-                    value: b.brand,
-                    label: b.brand,
-                    count: b.count,
-                  }))}
+                options={brands.slice(0, 200).map((b) => ({
+                  value: b.brand,
+                  label: b.brand,
+                  count: b.count,
+                }))}
                 selected={filters.brands ?? []}
                 onChange={(v) => update({ brands: v })}
               />
-              {brands.length > 12 && (
-                <p className="text-xs text-muted-foreground mt-1">
-                  Top marcas por cantidad de resultados
-                </p>
-              )}
             </FilterSection>
           </AccordionContent>
         </AccordionItem>
 
         <AccordionItem value="features">
-          <AccordionTrigger className="text-sm py-3">Categoría, combustible, transmisión</AccordionTrigger>
+          <AccordionTrigger className="text-sm py-3">
+            Categoría, combustible, transmisión
+          </AccordionTrigger>
           <AccordionContent className="space-y-4">
             <FilterSection label="Categoría">
               <ChipGroup
-                options={Object.entries(BODY_TYPE_LABELS).map(([value, label]) => ({
-                  value,
-                  label,
-                }))}
+                options={Object.entries(BODY_TYPE_LABELS).map(
+                  ([value, label]) => ({
+                    value,
+                    label,
+                  }),
+                )}
                 selected={filters.bodyTypes ?? []}
-                onChange={(v) => update({ bodyTypes: v as SearchFilters["bodyTypes"] })}
+                onChange={(v) =>
+                  update({ bodyTypes: v as SearchFilters["bodyTypes"] })
+                }
               />
             </FilterSection>
             <FilterSection label="Combustible">
               <ChipGroup
-                options={Object.entries(FUEL_TYPE_LABELS).map(([value, label]) => ({
-                  value,
-                  label,
-                }))}
+                options={Object.entries(FUEL_TYPE_LABELS).map(
+                  ([value, label]) => ({
+                    value,
+                    label,
+                  }),
+                )}
                 selected={filters.fuelTypes ?? []}
-                onChange={(v) => update({ fuelTypes: v as SearchFilters["fuelTypes"] })}
+                onChange={(v) =>
+                  update({ fuelTypes: v as SearchFilters["fuelTypes"] })
+                }
               />
             </FilterSection>
             <FilterSection label="Transmisión">
@@ -219,14 +294,18 @@ export function FilterSidebar({
                   { value: "automatica", label: "Automática" },
                 ]}
                 selected={filters.transmissions ?? []}
-                onChange={(v) => update({ transmissions: v as SearchFilters["transmissions"] })}
+                onChange={(v) =>
+                  update({ transmissions: v as SearchFilters["transmissions"] })
+                }
               />
             </FilterSection>
           </AccordionContent>
         </AccordionItem>
 
         <AccordionItem value="location">
-          <AccordionTrigger className="text-sm py-3">Provincia y fuente</AccordionTrigger>
+          <AccordionTrigger className="text-sm py-3">
+            Provincia y fuente
+          </AccordionTrigger>
           <AccordionContent className="space-y-4">
             <FilterSection label="Provincia">
               <ProvinceSelect
@@ -236,19 +315,25 @@ export function FilterSidebar({
             </FilterSection>
             <FilterSection label="Fuente">
               <ChipGroup
-                options={Object.entries(SOURCE_LABELS).map(([value, label]) => ({
-                  value,
-                  label,
-                }))}
+                options={Object.entries(SOURCE_LABELS).map(
+                  ([value, label]) => ({
+                    value,
+                    label,
+                  }),
+                )}
                 selected={filters.sources ?? []}
-                onChange={(v) => update({ sources: v as SearchFilters["sources"] })}
+                onChange={(v) =>
+                  update({ sources: v as SearchFilters["sources"] })
+                }
               />
             </FilterSection>
           </AccordionContent>
         </AccordionItem>
 
         <AccordionItem value="options">
-          <AccordionTrigger className="text-sm py-3">Vendedor, condiciones, Deal Score</AccordionTrigger>
+          <AccordionTrigger className="text-sm py-3">
+            Vendedor, condiciones, Deal Score
+          </AccordionTrigger>
           <AccordionContent className="space-y-4">
             <FilterSection label="Vendedor">
               <ChipGroup
@@ -257,7 +342,9 @@ export function FilterSidebar({
                   { value: "concesionaria", label: "Concesionaria" },
                 ]}
                 selected={filters.sellerTypes ?? []}
-                onChange={(v) => update({ sellerTypes: v as SearchFilters["sellerTypes"] })}
+                onChange={(v) =>
+                  update({ sellerTypes: v as SearchFilters["sellerTypes"] })
+                }
               />
             </FilterSection>
             <FilterSection label="Condiciones">
@@ -265,7 +352,9 @@ export function FilterSidebar({
                 <label className="flex items-center gap-2 text-sm cursor-pointer">
                   <Checkbox
                     checked={filters.verifiedOnly ?? false}
-                    onCheckedChange={(v) => update({ verifiedOnly: v === true })}
+                    onCheckedChange={(v) =>
+                      update({ verifiedOnly: v === true })
+                    }
                   />
                   Solo verificados
                 </label>
@@ -279,7 +368,9 @@ export function FilterSidebar({
                 <label className="flex items-center gap-2 text-sm cursor-pointer">
                   <Checkbox
                     checked={filters.hasFinancing ?? false}
-                    onCheckedChange={(v) => update({ hasFinancing: v === true })}
+                    onCheckedChange={(v) =>
+                      update({ hasFinancing: v === true })
+                    }
                   />
                   Con financiación
                 </label>

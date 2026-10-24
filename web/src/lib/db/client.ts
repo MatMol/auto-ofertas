@@ -1,3 +1,4 @@
+import { rowToListing as mapRow } from "../../../../shared/rows";
 import { getCloudflareContext } from "@opennextjs/cloudflare";
 import type { Listing, SearchFilters } from "@/lib/types";
 
@@ -7,62 +8,38 @@ async function getDB(): Promise<D1Database> {
 }
 
 function rowToListing(r: Record<string, unknown>): Listing {
-  return {
-    id: r.id as string,
-    source: r.source as Listing["source"],
-    sourceId: r.source_id as string,
-    sourceUrl: r.source_url as string,
-    brand: r.brand as string,
-    model: r.model as string,
-    version: (r.version as string) ?? null,
-    year: r.year as number,
-    isNew: r.is_new === 1,
-    price: r.price as number,
-    currency: (r.currency as Listing["currency"]) ?? "ARS",
-    priceArs: (r.price_ars as number) ?? (r.price as number),
-    priceUsd: (r.price_usd as number) ?? null,
-    km: r.km as number,
-    fuelType: (r.fuel_type as Listing["fuelType"]) ?? null,
-    transmission: (r.transmission as Listing["transmission"]) ?? null,
-    bodyType: (r.body_type as Listing["bodyType"]) ?? null,
-    doors: (r.doors as number) ?? null,
-    isImported: r.is_imported === 1,
-    location: r.location as string,
-    province: r.province as string,
-    imageUrls: JSON.parse((r.image_urls as string) || "[]"),
-    sellerType: (r.seller_type as Listing["sellerType"]) ?? "particular",
-    verificationBadge: (r.verification_badge as Listing["verificationBadge"]) ?? null,
-    acceptsSwap: r.accepts_swap === 1,
-    hasFinancing: r.has_financing === 1,
-    dealScore: r.deal_score as number,
-    consumption: (r.consumption as number) ?? null,
-    tankCapacity: (r.tank_capacity as number) ?? null,
-    createdAt: r.created_at as string,
-    updatedAt: r.updated_at as string,
-    isActive: r.is_active === 1,
-  };
+  return mapRow(r) as Listing;
 }
 
 const SORT_MAP: Record<string, string> = {
-  deal_score: "deal_score DESC",
-  price_asc: "price_ars ASC",
-  price_desc: "price_ars DESC",
-  km_asc: "km ASC",
-  newest: "created_at DESC",
-  price_per_km: "CASE WHEN km > 0 THEN price_ars / km ELSE 999999999 END ASC",
+  deal_score:
+    "(score_confidence != 'insufficient') DESC, deal_score DESC, id ASC",
+  price_asc: "price_ars ASC, id ASC",
+  price_desc: "price_ars DESC, id ASC",
+  km_asc: "km_known DESC, km ASC, id ASC",
+  newest: "created_at DESC, id ASC",
 };
 
 export async function getListings(
-  filters: SearchFilters
+  filters: SearchFilters,
 ): Promise<{ listings: Listing[]; total: number }> {
   const db = await getDB();
   const conditions: string[] = ["is_active = 1"];
   const params: unknown[] = [];
 
-  if (filters.query) {
-    conditions.push("(brand || ' ' || model || ' ' || COALESCE(version, '')) LIKE ?");
-    params.push(`%${filters.query}%`);
+  if (!filters.includeUnconfirmed)
+    conditions.push("price_kind = 'total' AND price_ars > 0");
+  if (filters.isNew !== undefined) {
+    conditions.push("is_new = ?");
+    params.push(+filters.isNew);
   }
+  if (filters.query)
+    for (const token of filters.query.split(/\s+/).filter(Boolean)) {
+      conditions.push(
+        "(brand || ' ' || model || ' ' || COALESCE(version, '') || ' ' || year || ' ' || COALESCE(fuel_type, '') || ' ' || COALESCE(transmission, '')) LIKE ? ESCAPE '\\'",
+      );
+      params.push(`%${token.replace(/[\\%_]/g, "\\$&")}%`);
+    }
   if (filters.brands?.length) {
     conditions.push(`brand IN (${filters.brands.map(() => "?").join(",")})`);
     params.push(...filters.brands);
@@ -88,31 +65,41 @@ export async function getListings(
     params.push(filters.priceMax);
   }
   if (filters.kmMin) {
-    conditions.push("km >= ?");
+    conditions.push("km_known = 1 AND km >= ?");
     params.push(filters.kmMin);
   }
   if (filters.kmMax !== undefined) {
-    conditions.push("km <= ?");
+    conditions.push("km_known = 1 AND km <= ?");
     params.push(filters.kmMax);
   }
   if (filters.provinces?.length) {
-    conditions.push(`province IN (${filters.provinces.map(() => "?").join(",")})`);
+    conditions.push(
+      `province IN (${filters.provinces.map(() => "?").join(",")})`,
+    );
     params.push(...filters.provinces);
   }
   if (filters.fuelTypes?.length) {
-    conditions.push(`fuel_type IN (${filters.fuelTypes.map(() => "?").join(",")})`);
+    conditions.push(
+      `fuel_type IN (${filters.fuelTypes.map(() => "?").join(",")})`,
+    );
     params.push(...filters.fuelTypes);
   }
   if (filters.transmissions?.length) {
-    conditions.push(`transmission IN (${filters.transmissions.map(() => "?").join(",")})`);
+    conditions.push(
+      `transmission IN (${filters.transmissions.map(() => "?").join(",")})`,
+    );
     params.push(...filters.transmissions);
   }
   if (filters.bodyTypes?.length) {
-    conditions.push(`body_type IN (${filters.bodyTypes.map(() => "?").join(",")})`);
+    conditions.push(
+      `body_type IN (${filters.bodyTypes.map(() => "?").join(",")})`,
+    );
     params.push(...filters.bodyTypes);
   }
   if (filters.sellerTypes?.length) {
-    conditions.push(`seller_type IN (${filters.sellerTypes.map(() => "?").join(",")})`);
+    conditions.push(
+      `seller_type IN (${filters.sellerTypes.map(() => "?").join(",")})`,
+    );
     params.push(...filters.sellerTypes);
   }
   if (filters.sources?.length) {
@@ -120,7 +107,7 @@ export async function getListings(
     params.push(...filters.sources);
   }
   if (filters.verifiedOnly) {
-    conditions.push("verification_badge IS NOT NULL");
+    conditions.push("verification_badge IN ('kavak_verified', 'ml_verified')");
   }
   if (filters.acceptsSwap) {
     conditions.push("accepts_swap = 1");
@@ -134,7 +121,9 @@ export async function getListings(
   }
 
   const where = conditions.join(" AND ");
-  const orderBy = SORT_MAP[filters.sortBy ?? "deal_score"] ?? "deal_score DESC";
+  const orderBy =
+    SORT_MAP[filters.sortBy ?? "deal_score"] ??
+    "(score_confidence != 'insufficient') DESC, deal_score DESC, id ASC";
   const page = filters.page ?? 1;
   const pageSize = filters.pageSize ?? 12;
   const offset = (page - 1) * pageSize;
@@ -147,11 +136,15 @@ export async function getListings(
   const total = countResult?.cnt ?? 0;
 
   const { results } = await db
-    .prepare(`SELECT * FROM listings WHERE ${where} ORDER BY ${orderBy} LIMIT ? OFFSET ?`)
+    .prepare(
+      `SELECT * FROM listings WHERE ${where} ORDER BY ${orderBy} LIMIT ? OFFSET ?`,
+    )
     .bind(...params, pageSize, offset)
     .all();
 
-  const listings = (results ?? []).map((r) => rowToListing(r as Record<string, unknown>));
+  const listings = (results ?? []).map((r) =>
+    rowToListing(r as Record<string, unknown>),
+  );
 
   return { listings, total };
 }
@@ -183,14 +176,14 @@ export async function getSimilarListings(
   brand: string,
   model: string,
   excludeId: string,
-  limit = 4
+  limit = 4,
 ): Promise<Listing[]> {
   const db = await getDB();
   const { results } = await db
     .prepare(
       `SELECT * FROM listings
-       WHERE is_active = 1 AND brand = ? AND model = ? AND id != ?
-       ORDER BY deal_score DESC LIMIT ?`
+       WHERE is_active = 1 AND price_kind = 'total' AND brand = ? AND model = ? AND id != ?
+       ORDER BY deal_score DESC LIMIT ?`,
     )
     .bind(brand, model, excludeId, limit)
     .all();
@@ -198,51 +191,32 @@ export async function getSimilarListings(
   return (results ?? []).map((r) => rowToListing(r as Record<string, unknown>));
 }
 
-export async function getAvgPriceArs(
-  brand: string,
-  model: string,
-  year?: number
-): Promise<number> {
+export async function getTopListings(options: {
+  isNew?: boolean;
+  limit?: number;
+  sortBy?: string;
+}): Promise<Listing[]> {
   const db = await getDB();
-
-  if (year && year > 0) {
-    const row = await db
-      .prepare(
-        "SELECT AVG(price_ars) as avg_price FROM listings WHERE is_active = 1 AND brand = ? AND model = ? AND year BETWEEN ? AND ?"
-      )
-      .bind(brand, model, year - 2, year + 2)
-      .first<{ avg_price: number | null }>();
-
-    if (row?.avg_price) return row.avg_price;
-  }
-
-  const row = await db
-    .prepare(
-      "SELECT AVG(price_ars) as avg_price FROM listings WHERE is_active = 1 AND brand = ? AND model = ?"
-    )
-    .bind(brand, model)
-    .first<{ avg_price: number | null }>();
-
-  return row?.avg_price ?? 0;
-}
-
-export async function getTopListings(
-  options: { isNew?: boolean; limit?: number; sortBy?: string }
-): Promise<Listing[]> {
-  const db = await getDB();
-  const conditions = ["is_active = 1"];
+  const conditions = ["is_active = 1", "price_kind = 'total'", "price_ars > 0"];
   const params: unknown[] = [];
+
+  if (options.sortBy !== "newest")
+    conditions.push("score_confidence != 'insufficient'");
 
   if (options.isNew !== undefined) {
     conditions.push("is_new = ?");
     params.push(options.isNew ? 1 : 0);
   }
 
-  const orderBy = SORT_MAP[options.sortBy ?? "deal_score"] ?? "deal_score DESC";
+  const orderBy =
+    SORT_MAP[options.sortBy ?? "deal_score"] ??
+    "(score_confidence != 'insufficient') DESC, deal_score DESC, id ASC";
   const limit = options.limit ?? 6;
 
   const { results } = await db
-    .prepare(`SELECT * FROM listings WHERE ${conditions.join(" AND ")} ORDER BY ${orderBy} LIMIT ?`)
+    .prepare(
+      `SELECT * FROM listings WHERE ${conditions.join(" AND ")} ORDER BY ${orderBy} LIMIT ?`,
+    )
     .bind(...params, limit)
     .all();
 
@@ -253,7 +227,7 @@ export async function getBrands(): Promise<{ brand: string; count: number }[]> {
   const db = await getDB();
   const { results } = await db
     .prepare(
-      "SELECT brand, COUNT(*) as count FROM listings WHERE is_active = 1 GROUP BY brand ORDER BY COUNT(*) DESC"
+      "SELECT brand, COUNT(*) as count FROM listings WHERE is_active = 1 AND price_kind = 'total' GROUP BY brand ORDER BY COUNT(*) DESC",
     )
     .all();
 
@@ -267,28 +241,112 @@ export async function getRankingData() {
   const db = await getDB();
 
   const queries = [
-    db.prepare("SELECT * FROM listings WHERE is_active = 1 ORDER BY deal_score DESC LIMIT 5").all(),
-    db.prepare("SELECT * FROM listings WHERE is_active = 1 AND km > 0 ORDER BY CASE WHEN km > 0 THEN price_ars / km ELSE 999999999 END ASC LIMIT 5").all(),
-    db.prepare("SELECT * FROM listings WHERE is_active = 1 AND is_new = 0 AND km > 0 ORDER BY km ASC LIMIT 5").all(),
-    db.prepare("SELECT * FROM listings WHERE is_active = 1 AND is_new = 1 ORDER BY deal_score DESC LIMIT 5").all(),
-    db.prepare("SELECT * FROM listings WHERE is_active = 1 AND body_type = 'sedan' ORDER BY deal_score DESC LIMIT 5").all(),
-    db.prepare("SELECT * FROM listings WHERE is_active = 1 AND body_type = 'suv' ORDER BY deal_score DESC LIMIT 5").all(),
-    db.prepare("SELECT * FROM listings WHERE is_active = 1 AND body_type = 'pickup' ORDER BY deal_score DESC LIMIT 5").all(),
+    db
+      .prepare(
+        "SELECT * FROM listings WHERE is_active = 1 AND price_kind = 'total' AND score_confidence != 'insufficient' ORDER BY deal_score DESC LIMIT 5",
+      )
+      .all(),
+    db
+      .prepare(
+        "SELECT * FROM listings WHERE is_active = 1 AND price_kind = 'total' ORDER BY price_ars ASC LIMIT 5",
+      )
+      .all(),
+    db
+      .prepare(
+        "SELECT * FROM listings WHERE is_active = 1 AND price_kind = 'total' AND is_new = 0 AND km > 0 ORDER BY km ASC LIMIT 5",
+      )
+      .all(),
+    db
+      .prepare(
+        "SELECT * FROM listings WHERE is_active = 1 AND price_kind = 'total' AND is_new = 1 AND score_confidence != 'insufficient' ORDER BY deal_score DESC LIMIT 5",
+      )
+      .all(),
+    db
+      .prepare(
+        "SELECT * FROM listings WHERE is_active = 1 AND price_kind = 'total' AND score_confidence != 'insufficient' AND body_type = 'sedan' ORDER BY deal_score DESC LIMIT 5",
+      )
+      .all(),
+    db
+      .prepare(
+        "SELECT * FROM listings WHERE is_active = 1 AND price_kind = 'total' AND score_confidence != 'insufficient' AND body_type = 'suv' ORDER BY deal_score DESC LIMIT 5",
+      )
+      .all(),
+    db
+      .prepare(
+        "SELECT * FROM listings WHERE is_active = 1 AND price_kind = 'total' AND score_confidence != 'insufficient' AND body_type = 'pickup' ORDER BY deal_score DESC LIMIT 5",
+      )
+      .all(),
   ];
 
-  const [topDeals, bestPricePerKm, lowestKmUsed, best0km, sedanDeals, suvDeals, pickupDeals] =
-    await Promise.all(queries);
+  const [
+    topDeals,
+    lowestPrice,
+    lowestKmUsed,
+    best0km,
+    sedanDeals,
+    suvDeals,
+    pickupDeals,
+  ] = await Promise.all(queries);
 
   const mapResults = (r: D1Result<Record<string, unknown>>) =>
     (r.results ?? []).map((row: Record<string, unknown>) => rowToListing(row));
 
   return {
     topDeals: mapResults(topDeals),
-    bestPricePerKm: mapResults(bestPricePerKm),
+    lowestPrice: mapResults(lowestPrice),
     lowestKmUsed: mapResults(lowestKmUsed),
     best0km: mapResults(best0km),
     sedanDeals: mapResults(sedanDeals),
     suvDeals: mapResults(suvDeals),
     pickupDeals: mapResults(pickupDeals),
   };
+}
+
+export async function getModels(brands: string[] = []): Promise<string[]> {
+  const db = await getDB();
+  const { results } = await db
+    .prepare(
+      `SELECT DISTINCT model FROM listings WHERE is_active=1 AND price_kind='total' ${brands.length ? `AND brand IN (${brands.map(() => "?").join(",")})` : ""} ORDER BY model`,
+    )
+    .bind(...brands)
+    .all<{ model: string }>();
+  return results.map((r) => r.model);
+}
+export async function getPriceHistory(id: string) {
+  const db = await getDB();
+  const { results } = await db
+    .prepare(
+      "SELECT price,currency,price_kind,observed_at FROM price_history WHERE listing_id=? ORDER BY observed_at DESC,id DESC LIMIT 100",
+    )
+    .bind(id)
+    .all<{
+      price: number;
+      currency: "ARS" | "USD";
+      price_kind: string;
+      observed_at: string;
+    }>();
+  return results;
+}
+export async function getSourceHealth() {
+  const db = await getDB();
+  const { results } = await db
+    .prepare(
+      "SELECT source, MAX(CASE WHEN status='success' THEN finished_at END) AS last_success, MAX(started_at) AS last_attempt FROM scrape_runs GROUP BY source",
+    )
+    .all<{
+      source: string;
+      last_success: string | null;
+      last_attempt: string;
+    }>();
+  return results;
+}
+export async function getPossibleDuplicates(id: string, group: string) {
+  const db = await getDB();
+  const { results } = await db
+    .prepare(
+      "SELECT * FROM listings WHERE duplicate_group=? AND id!=? AND is_active=1 LIMIT 6",
+    )
+    .bind(group, id)
+    .all();
+  return results.map(rowToListing);
 }

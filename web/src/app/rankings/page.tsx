@@ -4,7 +4,14 @@ import { ListingCard } from "@/components/listing-card";
 import { DealScoreBadge } from "@/components/deal-score";
 import { getRankingData } from "@/lib/db/client";
 import { formatPrice, formatKm } from "@/lib/format";
-import { Trophy, TrendingDown, Gauge, Car, Truck, Sparkles } from "lucide-react";
+import {
+  Trophy,
+  TrendingDown,
+  Gauge,
+  Car,
+  Truck,
+  Sparkles,
+} from "lucide-react";
 import type { Listing } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -35,9 +42,8 @@ function RankingTable({
       </CardHeader>
       <CardContent className="space-y-2">
         {listings.map((listing, i) => (
-          <Link
+          <div
             key={listing.id}
-            href={`/auto/${listing.id}`}
             className="flex items-center gap-3 p-2 rounded-lg hover:bg-accent transition-colors group"
           >
             <span className="text-lg font-bold text-muted-foreground w-6 text-right">
@@ -45,11 +51,13 @@ function RankingTable({
             </span>
             <div className="flex-1 min-w-0">
               <p className="text-sm font-medium truncate group-hover:text-primary transition-colors">
-                {listing.brand} {listing.model} {listing.year}
+                <Link href={`/auto/${listing.id}`}>
+                  {listing.brand} {listing.model} {listing.year}
+                </Link>
               </p>
               <p className="text-xs text-muted-foreground">
-                {formatPrice(listing.price, listing.currency)} · {formatKm(listing.km)} ·{" "}
-                {listing.province}
+                {formatPrice(listing.price, listing.currency)} ·{" "}
+                {formatKm(listing.km)} · {listing.province}
               </p>
             </div>
             <div className="text-right flex-shrink-0">
@@ -58,7 +66,7 @@ function RankingTable({
                 {valueLabel}: {valueFn(listing)}
               </p>
             </div>
-          </Link>
+          </div>
         ))}
         {listings.length === 0 && (
           <p className="text-sm text-muted-foreground text-center py-4">
@@ -81,8 +89,8 @@ export default async function RankingsPage() {
           Rankings
         </h1>
         <p className="text-muted-foreground mt-1">
-          Las mejores ofertas del mercado argentino, actualizadas cada pocas
-          horas.
+          Las mejores ofertas del mercado argentino, según los datos
+          recolectados. Consultá la actualización de cada fuente al pie.
         </p>
       </div>
 
@@ -94,7 +102,7 @@ export default async function RankingsPage() {
             Top 5 mejores ofertas generales
           </h2>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {data.topDeals.slice(0, 3).map((listing) => (
+            {data.topDeals.map((listing) => (
               <ListingCard key={listing.id} listing={listing} />
             ))}
           </div>
@@ -105,11 +113,11 @@ export default async function RankingsPage() {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         <RankingTable
           icon={TrendingDown}
-          title="Mejor precio/km"
-          description="Autos con la mejor relación precio por kilómetro recorrido"
-          listings={data.bestPricePerKm}
-          valueLabel="$/km"
-          valueFn={(l) => `$${Math.round(l.priceArs / Math.max(l.km, 1)).toLocaleString()}`}
+          title="Menor precio total"
+          description="Menores precios confirmados, sin anticipos ni cuotas"
+          listings={data.lowestPrice}
+          valueLabel="ARS"
+          valueFn={(l) => formatPrice(l.priceArs)}
         />
 
         <RankingTable

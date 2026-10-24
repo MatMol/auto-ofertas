@@ -11,9 +11,23 @@ export function calculateLoan(
   vehiclePrice: number,
   financingPercentage: number,
   annualRate: number,
-  months: number
+  months: number,
 ): LoanResult {
-  const montoFinanciado = Math.round(vehiclePrice * (financingPercentage / 100));
+  if (
+    ![vehiclePrice, financingPercentage, annualRate, months].every(
+      Number.isFinite,
+    ) ||
+    vehiclePrice < 0 ||
+    financingPercentage < 0 ||
+    financingPercentage > 100 ||
+    annualRate < 0 ||
+    months < 1 ||
+    !Number.isInteger(months)
+  )
+    throw new Error("Parámetros de préstamo inválidos");
+  const montoFinanciado = Math.round(
+    vehiclePrice * (financingPercentage / 100),
+  );
 
   if (months === 0 || annualRate === 0) {
     return {

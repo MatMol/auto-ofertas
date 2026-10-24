@@ -3,11 +3,7 @@
 import { Badge } from "@/components/ui/badge";
 import { X } from "lucide-react";
 import type { SearchFilters } from "@/lib/types";
-import {
-  FUEL_TYPE_LABELS,
-  BODY_TYPE_LABELS,
-  SOURCE_LABELS,
-} from "@/lib/types";
+import { FUEL_TYPE_LABELS, BODY_TYPE_LABELS, SOURCE_LABELS } from "@/lib/types";
 
 interface FilterChipsProps {
   filters: SearchFilters;
@@ -22,6 +18,31 @@ interface Chip {
 
 export function FilterChips({ filters, onChange }: FilterChipsProps) {
   const chips: Chip[] = [];
+  if (filters.query)
+    chips.push({
+      key: "query",
+      label: `Búsqueda: ${filters.query}`,
+      onRemove: () => onChange({ ...filters, query: undefined, page: 1 }),
+    });
+  if (filters.models?.length)
+    chips.push({
+      key: "models",
+      label: filters.models.join(", "),
+      onRemove: () => onChange({ ...filters, models: undefined, page: 1 }),
+    });
+  if (filters.isNew !== undefined)
+    chips.push({
+      key: "condition",
+      label: filters.isNew ? "0 km" : "Usados",
+      onRemove: () => onChange({ ...filters, isNew: undefined, page: 1 }),
+    });
+  if (filters.includeUnconfirmed)
+    chips.push({
+      key: "unconfirmed",
+      label: "Incluye precios sin confirmar",
+      onRemove: () =>
+        onChange({ ...filters, includeUnconfirmed: undefined, page: 1 }),
+    });
 
   filters.brands?.forEach((b) =>
     chips.push({
@@ -33,7 +54,7 @@ export function FilterChips({ filters, onChange }: FilterChipsProps) {
           brands: filters.brands?.filter((x) => x !== b),
           page: 1,
         }),
-    })
+    }),
   );
 
   filters.provinces?.forEach((p) =>
@@ -46,7 +67,7 @@ export function FilterChips({ filters, onChange }: FilterChipsProps) {
           provinces: filters.provinces?.filter((x) => x !== p),
           page: 1,
         }),
-    })
+    }),
   );
 
   filters.bodyTypes?.forEach((bt) =>
@@ -59,7 +80,7 @@ export function FilterChips({ filters, onChange }: FilterChipsProps) {
           bodyTypes: filters.bodyTypes?.filter((x) => x !== bt),
           page: 1,
         }),
-    })
+    }),
   );
 
   filters.fuelTypes?.forEach((ft) =>
@@ -72,7 +93,7 @@ export function FilterChips({ filters, onChange }: FilterChipsProps) {
           fuelTypes: filters.fuelTypes?.filter((x) => x !== ft),
           page: 1,
         }),
-    })
+    }),
   );
 
   filters.transmissions?.forEach((t) =>
@@ -85,7 +106,7 @@ export function FilterChips({ filters, onChange }: FilterChipsProps) {
           transmissions: filters.transmissions?.filter((x) => x !== t),
           page: 1,
         }),
-    })
+    }),
   );
 
   filters.sources?.forEach((s) =>
@@ -98,7 +119,7 @@ export function FilterChips({ filters, onChange }: FilterChipsProps) {
           sources: filters.sources?.filter((x) => x !== s),
           page: 1,
         }),
-    })
+    }),
   );
 
   if (filters.sellerTypes?.length) {
@@ -112,7 +133,7 @@ export function FilterChips({ filters, onChange }: FilterChipsProps) {
             sellerTypes: filters.sellerTypes?.filter((x) => x !== st),
             page: 1,
           }),
-      })
+      }),
     );
   }
 
@@ -121,7 +142,12 @@ export function FilterChips({ filters, onChange }: FilterChipsProps) {
       key: "year",
       label: `Año: ${filters.yearMin ?? "..."} - ${filters.yearMax ?? "..."}`,
       onRemove: () =>
-        onChange({ ...filters, yearMin: undefined, yearMax: undefined, page: 1 }),
+        onChange({
+          ...filters,
+          yearMin: undefined,
+          yearMax: undefined,
+          page: 1,
+        }),
     });
   }
 
@@ -130,11 +156,16 @@ export function FilterChips({ filters, onChange }: FilterChipsProps) {
       key: "price",
       label: `Precio: ${filters.priceMin ? `$${(filters.priceMin / 1_000_000).toFixed(1)}M` : "..."} - ${filters.priceMax ? `$${(filters.priceMax / 1_000_000).toFixed(1)}M` : "..."}`,
       onRemove: () =>
-        onChange({ ...filters, priceMin: undefined, priceMax: undefined, page: 1 }),
+        onChange({
+          ...filters,
+          priceMin: undefined,
+          priceMax: undefined,
+          page: 1,
+        }),
     });
   }
 
-  if (filters.kmMin || filters.kmMax) {
+  if (filters.kmMin !== undefined || filters.kmMax !== undefined) {
     chips.push({
       key: "km",
       label: `Km: ${filters.kmMin ?? "..."} - ${filters.kmMax ?? "..."}`,
@@ -171,7 +202,8 @@ export function FilterChips({ filters, onChange }: FilterChipsProps) {
     chips.push({
       key: "dealScore",
       label: `Score ≥ ${filters.dealScoreMin}`,
-      onRemove: () => onChange({ ...filters, dealScoreMin: undefined, page: 1 }),
+      onRemove: () =>
+        onChange({ ...filters, dealScoreMin: undefined, page: 1 }),
     });
   }
 
